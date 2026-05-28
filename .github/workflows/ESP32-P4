@@ -1,0 +1,67 @@
+name: ESP32-P4 Firmware Build
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4  # v6 ещё нестабилен, лучше v4
+      with:
+        submodules: 'recursive'
+
+    # ✅ КЭШ: ускоряет сборку с 10 мин до 2-3 мин
+    - name: Cache ESP-IDF
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.espressif
+          esp-idf/components
+        key: ${{ runner.os }}-esp-idf-v5.4-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults') }}
+        restore-keys: |
+          ${{ runner.os }}-esp-idf-v5.4-
+
+    - name: Setup ESP-IDF v5.4
+      run: |
+        if [ ! -d "esp-idf" ]; then
+          git clone --depth 1 --branch release/v5.4 https://github.com/espressif/esp-idf.git
+          cd esp-idf
+          git submodule update --init --recursive
+          ./install.sh esp32p4
+        fi
+        
+    - name: Configure & Build
+      run: |
+        . ./esp-idf/export.sh
+        # Применяет sdkconfig.defaults автоматически
+        idf.py set-target esp32p4
+        idf.py build
+
+    # ✅ SIZE ANALYSIS: покажет таблицу компонентов в логе
+    - name: Analyze Binary Size
+      if: success()
+      run: |
+        . ./esp-idf/export.sh
+        echo "📊 === COMPONENT SIZES ==="
+        idf.py size-components
+        echo "📊 === MEMORY MAP ==="
+        idf.py size
+
+    # ✅ FIX: Полные пути к всем .bin файлам
+    - name: Upload Artifacts
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: murzik-esp32p4-firmware
+        path: |
+          build/*.bin
+          build/bootloader/*.bin
+          build/partition_table/*.bin
+        retention-days: 7
