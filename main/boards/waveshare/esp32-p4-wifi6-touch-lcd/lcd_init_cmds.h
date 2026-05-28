@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 #ifdef CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_4B
 // Leave it blank
 #elif CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_7B
@@ -2195,5 +2194,3 @@ static const jd9365_lcd_init_cmd_t lcd_init_cmds[] = {
 
     {0x29, (uint8_t[]){0x00}, 1, 20},
 };
->>>>>>> upstream/main
-#endif
