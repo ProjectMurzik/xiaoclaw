@@ -28,7 +28,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-esp-idf-v5.4-
 
-    - name: Setup ESP-IDF v5.4
+    - name: Setup ESP-IDF v5.5
       run: |
         if [ ! -d "esp-idf" ]; then
           git clone --depth 1 --branch release/v5.4 https://github.com/espressif/esp-idf.git
