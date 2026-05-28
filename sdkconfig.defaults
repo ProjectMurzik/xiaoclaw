@@ -1,4 +1,4 @@
-# ESP-IDF v5.4 sdkconfig.defaults для Murzik (ESP32-P4)
+# ESP-IDF v5.4 sdkconfig.defaults для Murzik (ESP32-P4 + xiaoclaw)
 
 # ---------------------------------------------------------
 # 1. Target & System
@@ -6,8 +6,6 @@
 CONFIG_IDF_TARGET="esp32p4"
 CONFIG_IDF_TARGET_ESP32P4=y
 CONFIG_ESP32P4_REV_MIN_0=y
-
-# System (FreeRTOS)
 CONFIG_FREERTOS_HZ=1000
 CONFIG_FREERTOS_INTERRUPT_BACKTRACE=n
 CONFIG_FREERTOS_CORETIMER_SYSTICK_LVL=3
@@ -28,7 +26,7 @@ CONFIG_SPIRAM_USE_CAPS_ALLOC=n
 CONFIG_SPIRAM_IGNORE_NOTFOUND=n
 
 # ---------------------------------------------------------
-# 3. Partition Table (OTA Support)
+# 3. Partition Table
 # ---------------------------------------------------------
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
@@ -46,51 +44,56 @@ CONFIG_ESP_WIFI_STA_DISCONNECTED_PM_ENABLE=y
 CONFIG_ESP_WIFI_SLP_IRAM_OPT=y
 CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=y
 CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=y
-
 CONFIG_LWIP_LOCAL_HOSTNAME="murzik"
 CONFIG_LWIP_DHCP=y
 CONFIG_LWIP_DNS=y
-
-# HTTP & WebSocket
 CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
 CONFIG_ESP_HTTP_CLIENT_ENABLE_BASIC_AUTH=y
 CONFIG_ESP_WS_CLIENT_ENABLE_TLS=y
 
 # ---------------------------------------------------------
-# 5. Display & LVGL (800x800 Round)
+# 5. 🔥 CRITICAL: Board Selection (Fixes 5KB libmain.a!)
 # ---------------------------------------------------------
+CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y
+
+# ---------------------------------------------------------
+# 6. Display & LVGL
+# ---------------------------------------------------------
+CONFIG_LCD_ENABLE=y
+CONFIG_LCD_MIPI_DSI=y
+CONFIG_LCD_MIPI_DSI_PHY_DUAL_LANE=y
 CONFIG_LVGL_ENABLE=y
 CONFIG_LVGL_COLOR_DEPTH=16
 CONFIG_LVGL_BITS_PER_PIXEL=16
-CONFIG_LVGL_DRAW_BUF_SIZE=200000       # ~390KB буфер (оптимально для PSRAM)
+CONFIG_LVGL_DRAW_BUF_SIZE=200000
 CONFIG_LVGL_MEM_POOL_INCLUDE_SPIRAM_HEAP=y
 CONFIG_LVGL_TICK_PERIOD_MS=5
 CONFIG_LVGL_DPI=96
 CONFIG_LVGL_ANTIALIAS=1
-CONFIG_LVGL_DISP_DEF_REFR_PERIOD=30    # ~33 FPS
-
-# LCD Driver
-CONFIG_LCD_ENABLE=y
-CONFIG_LCD_MIPI_DSI=y
-CONFIG_LCD_MIPI_DSI_PHY_DUAL_LANE=y
+CONFIG_LVGL_DISP_DEF_REFR_PERIOD=30
 
 # ---------------------------------------------------------
-# 6. Audio (I2S)
+# 7. Audio (I2S) & Processing
 # ---------------------------------------------------------
 CONFIG_ESP_I2S_ENABLE=y
 CONFIG_ESP_I2S_SUPPORTS_LEGACY=n
 CONFIG_ESP_I2S_ISR_IRAM_SAFE=y
 CONFIG_ESP_I2S_SUPPORTS_APLL=y
+CONFIG_USE_AUDIO_PROCESSOR=y  # <-- Подхватывает AFE или заглушку процессора
 
 # ---------------------------------------------------------
-# 7. ESP-SR (Голос - пока выключено для экономии места)
+# 8. ESP-SR (Voice) - Отключено для первой сборки
 # ---------------------------------------------------------
 CONFIG_ESP_SR_ENABLE=n
-# CONFIG_ESP_SR_WAKENET_ENABLE=y
-# CONFIG_ESP_SR_VAD_ENABLE=y
 
 # ---------------------------------------------------------
-# 8. Logging & Debug
+# 9. Language & Assets (Обязательно для xiaoclaw)
+# ---------------------------------------------------------
+CONFIG_LANGUAGE_EN_US=y          # <-- Без этого не сгенерируется language.json
+CONFIG_FLASH_DEFAULT_ASSETS=n    # <-- Включи 'y' только после проверки partitions.csv
+
+# ---------------------------------------------------------
+# 10. Logging & Debug
 # ---------------------------------------------------------
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_DEFAULT_LEVEL=3
