@@ -52,7 +52,7 @@ dependencies:
   espressif/esp_lcd_touch_gt1151: ^1
   waveshare/esp_lcd_touch_cst9217: ^1.0.3
   espressif/esp_lcd_touch_cst816s: ^1.0.6
-  lvgl/lvgl: "~9.2.0"               # ← v9 (требуется для xiaozhi-fonts)
+  lvgl/lvgl: "^9.2.0"               # ← v9 (требуется для xiaozhi-fonts)
   espressif/esp_lvgl_port: "^2.6.0" # ← v2.6+ (поддержка P4 + MIPI DSI)
   espressif/esp_io_expander_tca95xx_16bit: ^2.0.0
   espressif2022/image_player: ^1.1.1
