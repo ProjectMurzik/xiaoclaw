@@ -53,7 +53,7 @@ dependencies:
   waveshare/esp_lcd_touch_cst9217: ^1.0.3
   espressif/esp_lcd_touch_cst816s: ^1.0.6
   lvgl/lvgl: "~8.4.0"          # Понижено с ~9.5.0 на ~8.4.0 для совместимости шрифтов
-  esp_lvgl_port: "~1.4.2"      # Понижено с ~2.7.2 на ~1.4.2 (версия 1.x для LVGL 8)
+  espressif/esp_lvgl_port: "^2.4.0"      # Понижено с ~2.7.2 на ~1.4.2 (версия 1.x для LVGL 8)
   espressif/esp_io_expander_tca95xx_16bit: ^2.0.0
   espressif2022/image_player: ^1.1.1
   espressif2022/esp_emote_expression: ^0.1.0
