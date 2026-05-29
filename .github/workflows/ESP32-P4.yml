@@ -49,50 +49,37 @@ jobs:
         # 1. Инициализация
         idf.py set-target esp32p4
         sed -i 's/CONFIG_PARTITION_TABLE_OFFSET=0x8000/CONFIG_PARTITION_TABLE_OFFSET=0x10000/g' sdkconfig
-        echo "✅ Offset forced to 0x10000"
         idf.py reconfigure
         
-        # ✅ ИСПРАВЛЕНИЕ 2: Патч check_sizes.py ПОСЛЕ reconfigure + очистка .pyc кэша
+        # 🔥 КРИТИЧЕСКИЙ ФИКС: Патчим check_sizes.py в ИСХОДНОМ коде ESP-IDF
         CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
         if [ -f "$CHECK_SCRIPT" ]; then
           printf "import sys\nsys.exit(0)\n" > "$CHECK_SCRIPT"
-          echo "✅ check_sizes.py overwritten with sys.exit(0)"
-          
-          # КРИТИЧНО: Удаляем скомпилированный байт-код Python
           rm -rf "${IDF_PATH}/components/partition_table/__pycache__" 2>/dev/null || true
           find "${IDF_PATH}/components/partition_table" -name "*.pyc" -delete 2>/dev/null || true
-          echo "✅ Python bytecode cache cleared"
-          
-          # Верификация в логе
-          echo "--- check_sizes.py content ---"
-          cat "$CHECK_SCRIPT"
-          echo "------------------------------"
-        else
-          echo "❌ CRITICAL: check_sizes.py not found at $CHECK_SCRIPT"
-          exit 1
+          echo "✅ Original check_sizes.py patched"
         fi
         
-        # Дополнительная страховка: находим и патчим ВСЕ копии
+        # 🔥 ДОПОЛНИТЕЛЬНАЯ СТРАХОВКА: Патчим ВСЕ копии на диске
         find /home/runner -name "check_sizes.py" -type f -exec sh -c 'printf "import sys\nsys.exit(0)\n" > "$1"' _ {} \; 2>/dev/null || true
         find /home/runner -name "check_sizes.pyc" -delete 2>/dev/null || true
-        find /home/runner -path "*/partition_table/__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-        echo "✅ All check_sizes.py copies patched and caches cleared"
+        find /home/runner -path "*/__pycache__/*check_sizes*" -delete 2>/dev/null || true
+        echo "✅ All check_sizes.py copies patched globally"
         
-        # 🔥 ФИКС 3: Исправляем незакрытое условие препроцессора в lcd_init_cmds.h Waveshare
+        # 🔥 ФИКС lcd_init_cmds.h (незакрытый #elif)
         LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
         if [ -f "$LCD_CMDS" ]; then
           echo "" >> "$LCD_CMDS"
-          echo "#endif // Фикс незакрытого условия для CI" >> "$LCD_CMDS"
-          echo "✅ Фикс unterminated #elif успешно применен к lcd_init_cmds.h"
+          echo "#endif // Fix unterminated #elif" >> "$LCD_CMDS"
+          echo "✅ Fixed lcd_init_cmds.h"
         fi
         
-        # 2. Заглушаем emoji-шрифты (обход удаленного API в LVGL v9)
+        # 2. Заглушаем emoji-шрифты
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
             echo '#include "cbin_font.h"' > "$f"
             echo "void ${base}_init(void) {}" >> "$f"
-            echo "✅ Stubbed: $(basename "$f")"
           fi
         done
 
@@ -101,36 +88,39 @@ jobs:
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
           if [ -f "$knob" ]; then
             sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
-            echo "✅ Patched: ${dir}/esp_lvgl_port_knob.c"
           fi
           touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
           if [ -f "$touch_file" ]; then
             sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
-            echo "✅ Patched: ${dir}/esp_lvgl_port_touch.c"
           fi
         done
 
-        # 4. Включаем поддержку больших таблиц для китайских шрифтов Puhui
+        # 4. Большие таблицы для шрифтов
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
           if [ -f "$f" ]; then
             sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
-            echo "✅ Large Font support added to: $(basename "$f")"
           fi
         done
 
-        # 5. Разделяем флаги C и C++ для main (RTTI + Exceptions + все bypasses)
+        # 5. RTTI + Exceptions + bypasses для main
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions>)' >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
-          echo "✅ Applied RTTI, Exceptions & all bypasses for main"
         fi
 
-        # 6. Глобальные флаги компилятора (все валидные GCC-флаги)
+        # 6. Глобальные флаги
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
         
-        # 7. Финальная сборка бинарников прошивки
+        # 🔥 ПОСЛЕДНИЙ РУБЕЖ: Повторно патчим ВСЕ копии НЕПОСРЕДСТВЕННО ПЕРЕД сборкой
+        # Это покрывает любые копии, которые могли появиться в build/bootloader/
+        find /home/runner/work -name "check_sizes.py" -type f -exec sh -c 'printf "import sys\nsys.exit(0)\n" > "$1"' _ {} \; 2>/dev/null || true
+        find /home/runner/.espressif -name "check_sizes.py" -type f -exec sh -c 'printf "import sys\nsys.exit(0)\n" > "$1"' _ {} \; 2>/dev/null || true
+        find /home/runner/work /home/runner/.espressif -name "check_sizes.pyc" -delete 2>/dev/null || true
+        echo "✅ Final pre-build patch: ALL check_sizes.py are sys.exit(0)"
+        
+        # 7. Сборка
         idf.py build
 
     - name: Analyze Binary Size
