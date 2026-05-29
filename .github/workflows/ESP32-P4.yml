@@ -46,42 +46,12 @@ jobs:
         rm -f dependencies.lock
         rm -rf build
         
-        # 1. Инициализация (CMake скачивает managed_components и разворачивает дерево проекта в build/)
+        # 1. Инициализация (CMake скачивает managed_components)
         idf.py set-target esp32p4
-        idf.py reconfigure
         
-        # 🔥 АБСОЛЮТНЫЙ CMake-ХАК: Патчим сгенерированный рабочий файл бутлоадера внутри папки build/
-        # Это сработает на 100%, так как именно этот файл Ninja читает при сборке подпроекта!
-        LOCAL_BOOT_CMAKE="build/bootloader/CMakeLists.txt"
-        if [ -f "$LOCAL_BOOT_CMAKE" ]; then
-          echo "" >> "$LOCAL_BOOT_CMAKE"
-          echo "macro(check_bootloader_size)" >> "$LOCAL_BOOT_CMAKE"
-          echo '  message(STATUS " [XIAOCLAW HACK] Bootloader size check safely bypassed via CMake macro override")' >> "$LOCAL_BOOT_CMAKE"
-          echo "endmacro()" >> "$LOCAL_BOOT_CMAKE"
-          echo "✅ Рабочий CMake-патч успешно применен к $LOCAL_BOOT_CMAKE"
-          echo "--- Последние строки рабочего файла бутлоадера ---"
-          tail -6 "$LOCAL_BOOT_CMAKE"
-          echo "------------------------------------------------"
-        else
-          echo "⚠️ Предупреждение: Файл build/bootloader/CMakeLists.txt не найден. Проверяем альтернативный путь..."
-          ALT_BOOT_CMAKE="build/bootloader/subproject/CMakeLists.txt"
-          if [ -f "$ALT_BOOT_CMAKE" ]; then
-            echo "" >> "$ALT_BOOT_CMAKE"
-            echo "macro(check_bootloader_size)" >> "$ALT_BOOT_CMAKE"
-            echo '  message(STATUS "🚨 [XIAOCLAW HACK] Bootloader size check safely bypassed (alt path)")' >> "$ALT_BOOT_CMAKE"
-            echo "endmacro()" >> "$ALT_BOOT_CMAKE"
-            echo "✅ CMake patch applied to $ALT_BOOT_CMAKE"
-          else
-            echo "❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось найти CMakeLists.txt для бутлоадера в build/!"
-            exit 1
-          fi
-        fi
-        
-        # 🔥 ПРИНУДИТЕЛЬНЫЙ ОФСЕТ: Фиксируем адрес 0x10000 в уже сгенерированном sdkconfig
-        if [ -f "sdkconfig" ]; then
-          sed -i 's/CONFIG_PARTITION_TABLE_OFFSET=0x8000/CONFIG_PARTITION_TABLE_OFFSET=0x10000/g' sdkconfig
-          echo "✅ Offset forced to 0x10000 in sdkconfig"
-        fi
+        # 🔥 БРОНЕБОЙНЫЙ ФИКС КАРТЫ ПАМЯТИ: Передаем новый офсет через параметры CMake.
+        # Это принудительно заставит Kconfig выделить 64КБ под бутлоадер во всех подпроектах!
+        idf.py -D CONFIG_PARTITION_TABLE_OFFSET=0x10000 reconfigure
         
         # 2. Заглушаем emoji-шрифты (обход удаленного API в LVGL v9)
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
@@ -128,7 +98,9 @@ jobs:
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined -Wno-error=conversion"
         
         # 7. Запуск финальной компиляции бинарников прошивки
-        idf.py build
+        # Принудительно дублируем флаг офсета при сборке, чтобы подпроект бутлоадера точно его перехватил
+        idf.py -D CONFIG_PARTITION_TABLE_OFFSET=0x10000 build
+
 
 
     - name: Analyze Binary Size
