@@ -40,10 +40,13 @@ jobs:
     - name: Configure & Build
       run: |
         . ./esp-idf/export.sh
+        
+        # Принудительно очищаем старый конфигурационный кэш, чтобы сбросить старый офсет 0x8000
         rm -f sdkconfig
         rm -f dependencies.lock
+        rm -rf build
         
-        # 1. Инициализируем проект и скачиваем managed_components
+        # 1. Инициализируем проект заново (сгенерирует sdkconfig строго с офсетом 0x10000)
         idf.py set-target esp32p4
         idf.py reconfigure
         
@@ -80,20 +83,20 @@ jobs:
           fi
         done
 
-        # 🔥 5. Включаем RTTI и полностью вырезаем вызовы Emoji-шрифтов через макросы компиляции C++
+        # 5. Включаем RTTI для main компонента (фикс dynamic_cast)
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
-          # Добавляем -frtti и принудительно превращаем инициализацию emoji в пустые строки, игнорируя конфликты макросов
-          echo 'target_compile_options(__idf_main PRIVATE -frtti -Wno-error=macro-redefined -Wno-int-conversion -Dfont_emoji_32_init()=((void)0) -Dfont_emoji_64_init()=((void)0))' >> main/CMakeLists.txt
-          echo "✅ Enabled RTTI and added inline C++ stubs for emoji fonts"
+          echo "target_compile_options(__idf_main PRIVATE -frtti)" >> main/CMakeLists.txt
+          echo "✅ Enabled RTTI for main component"
         fi
 
         # 6. Глобальные флаги компилятора (страховка)
-        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined"
-        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined"
+        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
+        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
         
         # 7. Финальная компиляция
         idf.py build
+
 
 
 
