@@ -37,17 +37,17 @@ jobs:
           ./install.sh esp32p4
         fi
         
-    - name: Configure & Build
-      run: |
+        - name: Configure & Build
+        run: |
         . ./esp-idf/export.sh
         rm -f sdkconfig
         rm -f dependencies.lock
         
-        # 1. Конфигурация проекта
+        # 1. Инициализируем проект и скачиваем managed_components
         idf.py set-target esp32p4
         idf.py reconfigure
         
-        # 🔥 2. Заглушаем emoji-шрифты (обход API lv_imgfont_create -> lv_imagefont_create)
+        # 🔥 2. Заглушаем emoji-шрифты (обход API lv_imgfont_create)
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
@@ -57,36 +57,40 @@ jobs:
           fi
         done
 
-        # 🔥 3. Патчи esp_lvgl_port (отключение -Werror и деprecation)
+        # 🔥 3. Патчи esp_lvgl_port (отключение -Werror и deprecation)
         for dir in lvgl8 lvgl9; do
-          # knob.c: maybe-uninitialized
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
           if [ -f "$knob" ]; then
-            sed -i '1i\#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
+            sed -i '1s/^/#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"\n/' "$knob"
             echo "✅ Patched: ${dir}/esp_lvgl_port_knob.c"
           fi
           
-          # touch.c: deprecated declarations
           touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
           if [ -f "$touch_file" ]; then
-            sed -i '1i\#pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
+            sed -i '1s/^/#pragma GCC diagnostic ignored "-Wdeprecated-declarations"\n/' "$touch_file"
             echo "✅ Patched: ${dir}/esp_lvgl_port_touch.c"
           fi
         done
 
-        # 🔥 4. Мост памяти для базовых шрифтов (v8 ↔ v9 совместимость)
+        # 🔥 4. Мост памяти и больших таблиц для шрифтов (v8 ↔ v9 + фикс Puhui)
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
           if [ -f "$f" ]; then
-            sed -i '1i\#define lv_free lv_mem_free\n#define lv_malloc lv_mem_alloc' "$f"
-            echo "✅ Memory bridge: $(basename "$f")"
+            sed -i '1s/^/#define LV_FONT_FMT_TXT_LARGE 1\n#define lv_free lv_mem_free\n#define lv_malloc lv_mem_alloc\n/' "$f"
+            echo "✅ Memory & Large Font bridge: $(basename "$f")"
           fi
         done
 
-        # 5. Глобальные флаги компилятора (страховка)
+        # 🔥 5. Включаем RTTI для main компонента (фикс dynamic_cast)
+        if [ -f "main/CMakeLists.txt" ]; then
+          echo -e '\ntarget_compile_options(__idf_main PRIVATE -frtti)' >> main/CMakeLists.txt
+          echo "✅ Enabled RTTI for main component"
+        fi
+
+        # 6. Глобальные флаги компилятора (страховка)
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
         
-        # 6. Финальная сборка
+        # 7. Финальная компиляция
         idf.py build
 
     - name: Analyze Binary Size
