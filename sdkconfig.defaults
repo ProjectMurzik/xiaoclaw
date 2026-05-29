@@ -13,7 +13,7 @@ CONFIG_FREERTOS_CORETIMER_SYSTICK_LVL=3
 # ---------------------------------------------------------
 # 2. Flash & PSRAM (КРИТИЧНО для P4)
 # ---------------------------------------------------------
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_TYPE_AUTO=y
 CONFIG_SPIRAM_SPEED_80M=y
