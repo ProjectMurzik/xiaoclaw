@@ -41,12 +41,12 @@ jobs:
       run: |
         . ./esp-idf/export.sh
         
-        # 0. Полная очистка перед сборкой
+        # 0. Очистка перед сборкой
         rm -f sdkconfig sdkconfig.old
         rm -f dependencies.lock
         rm -rf build
         
-        # 1. Инициализация (CMake скачивает managed_components)
+        # 1. Инициализация
         idf.py set-target esp32p4
         idf.py reconfigure
         
@@ -96,6 +96,7 @@ jobs:
         
         # 7. Финальный запуск чистой компиляции бинарников прошивки
         idf.py build
+
 
     - name: Analyze Binary Size
       if: success()
