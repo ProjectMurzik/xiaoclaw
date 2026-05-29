@@ -13,18 +13,19 @@ jobs:
     
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4  # v6 ещё нестабилен, лучше v4
+      uses: actions/checkout@v4
       with:
         submodules: 'recursive'
 
-    # ✅ КЭШ: ускоряет сборку с 10 мин до 2-3 мин
+    # ✅ КЭШ: Теперь учитывает изменения в idf_component.yml и сбросит старые поломанные библиотеки
     - name: Cache ESP-IDF
       uses: actions/cache@v4
       with:
         path: |
           ~/.espressif
           esp-idf/components
-        key: ${{ runner.os }}-esp-idf-v5.5-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults') }}
+          managed_components
+        key: ${{ runner.os }}-esp-idf-v5.5-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
         restore-keys: |
           ${{ runner.os }}-esp-idf-v5.5-
 
@@ -40,9 +41,12 @@ jobs:
     - name: Configure & Build
       run: |
         . ./esp-idf/export.sh
-        rm -f sdkconfig
         
-        # Передаем глобальный флаг компилятору: не превращать варнинги в ошибки
+        # Принудительно удаляем старый конфиг и lock-файл зависимостей
+        rm -f sdkconfig
+        rm -f dependencies.lock
+        
+        # Глобально запрещаем превращать предупреждения в критические ошибки
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations"
         
