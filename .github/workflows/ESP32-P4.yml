@@ -31,7 +31,7 @@ jobs:
     - name: Setup ESP-IDF v5.5
       run: |
         if [ ! -d "esp-idf" ]; then
-          git clone --depth 1 --branch release/v5.5 https://github.com
+          git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
           cd esp-idf
           git submodule update --init --recursive
           ./install.sh esp32p4
