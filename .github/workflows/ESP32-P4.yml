@@ -48,10 +48,7 @@ jobs:
         
         # 1. Инициализация (CMake скачивает managed_components)
         idf.py set-target esp32p4
-        
-        # 🔥 БРОНЕБОЙНЫЙ ФИКС КАРТЫ ПАМЯТИ: Передаем новый офсет через параметры CMake.
-        # Это принудительно заставит Kconfig выделить 64КБ под бутлоадер во всех подпроектах!
-        idf.py -D CONFIG_PARTITION_TABLE_OFFSET=0x10000 reconfigure
+        idf.py reconfigure
         
         # 2. Заглушаем emoji-шрифты (обход удаленного API в LVGL v9)
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
@@ -95,13 +92,10 @@ jobs:
 
         # 6. Глобальные флаги компилятора (страховка для всех внешних модулей)
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined -Wno-error=pointer-sign"
-        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined -Wno-error=conversion"
+        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined -Wno-conversion"
         
-        # 7. Запуск финальной компиляции бинарников прошивки
-        # Принудительно дублируем флаг офсета при сборке, чтобы подпроект бутлоадера точно его перехватил
-        idf.py -D CONFIG_PARTITION_TABLE_OFFSET=0x10000 build
-
-
+        # 7. Финальный запуск чистой компиляции бинарников прошивки
+        idf.py build
 
     - name: Analyze Binary Size
       if: success()
