@@ -68,7 +68,8 @@ CONFIG_LVGL_TICK_PERIOD_MS=5
 CONFIG_LVGL_DPI=96
 CONFIG_LVGL_ANTIALIAS=1
 CONFIG_LVGL_DISP_DEF_REFR_PERIOD=30
-CONFIG_LVGL_USE_IMGFONT=y
+CONFIG_LVGL_USE_IMGFONT=n           # <-- ИСПРАВЛЕНО: Отключено, чтобы убрать ошибку lv_imgfont_create в LVGL v9
+CONFIG_LV_FONT_FMT_TXT_LARGE=y     # <-- ДОБАВЛЕНО: Исправляет ошибку переполнения индекса (-Woverflow) больших шрифтов Puhui
 
 # 7. Audio (I2S) & Processing
 # ---------------------------------------------------------
@@ -88,7 +89,7 @@ CONFIG_ESP_SR_ENABLE=n
 CONFIG_LANGUAGE_EN_US=y
 CONFIG_FLASH_DEFAULT_ASSETS=n
 
-# 10. Logging & Debug
+# 10. Logging & Debug & Compiler Options
 # ---------------------------------------------------------
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_DEFAULT_LEVEL=3
@@ -99,4 +100,4 @@ CONFIG_ESP_TASK_WDT=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
 CONFIG_ESP_TASK_WDT_PANIC=n
 CONFIG_COMPILER_WARNINGS_AS_ERRORS=n
-CONFIG_LV_FONT_FMT_TXT_LARGE=y
+CONFIG_COMPILER_CXX_RTTI=y         # <-- ДОБАВЛЕНО: Включает RTTI для С++ (исправляет падение dynamic_cast в audio_service.cc)
