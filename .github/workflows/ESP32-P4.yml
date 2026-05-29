@@ -60,25 +60,28 @@ jobs:
           fi
         done
 
-        # 3. Патчи esp_lvgl_port (отключение -Werror и deprecation)
+        # 🔥 3. Патчи esp_lvgl_port через безопасный синтаксис 1i для Ubuntu
         for dir in lvgl8 lvgl9; do
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
           if [ -f "$knob" ]; then
-            sed -i '1s/^/#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"\n/' "$knob"
+            sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
             echo "✅ Patched: ${dir}/esp_lvgl_port_knob.c"
           fi
           
           touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
           if [ -f "$touch_file" ]; then
-            sed -i '1s/^/#pragma GCC diagnostic ignored "-Wdeprecated-declarations"\n/' "$touch_file"
+            sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
             echo "✅ Patched: ${dir}/esp_lvgl_port_touch.c"
           fi
         done
 
-        # 4. Мост памяти и больших таблиц для шрифтов (v8 ↔ v9 + фикс Puhui)
+        # 🔥 4. Мост памяти и больших таблиц для шрифтов через безопасный 1i для Ubuntu
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
           if [ -f "$f" ]; then
-            sed -i '1s/^/#define LV_FONT_FMT_TXT_LARGE 1\n#define lv_free lv_mem_free\n#define lv_malloc lv_mem_alloc\n/' "$f"
+            # Вставляем три макроса по очереди, каждый на новой строке перед первой строкой файла
+            sed -i '1i #define lv_malloc lv_mem_alloc' "$f"
+            sed -i '1i #define lv_free lv_mem_free' "$f"
+            sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
             echo "✅ Memory & Large Font bridge: $(basename "$f")"
           fi
         done
@@ -96,6 +99,7 @@ jobs:
         
         # 7. Финальная компиляция
         idf.py build
+
 
 
 
