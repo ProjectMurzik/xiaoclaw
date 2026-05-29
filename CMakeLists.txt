@@ -15,6 +15,13 @@ project(xiaozhi)
 
 # 2. Точечно отключаем -Werror для скачанного порта LVGL
 if(TARGET __idf_espressif__esp_lvgl_port)
-    target_compile_options(__idf_espressif__esp_lvgl_port PRIVATE -Wno-error=maybe-uninitialized)
+    get_target_property(_target_type __idf_espressif__esp_lvgl_port TYPE)
+    if(_target_type STREQUAL "INTERFACE_LIBRARY")
+        # Для INTERFACE-библиотек используем INTERFACE ключевое слово
+        target_compile_options(__idf_espressif__esp_lvgl_port INTERFACE -Wno-error=maybe-uninitialized)
+    else()
+        # Для обычных библиотек используем PRIVATE
+        target_compile_options(__idf_espressif__esp_lvgl_port PRIVATE -Wno-error=maybe-uninitialized)
+    endif()
     message(STATUS "🚨 [XIAOCLAW HACK] Успешно отключен -Werror для esp_lvgl_port")
 endif()
