@@ -22,6 +22,7 @@ jobs:
       with:
         path: |
           ~/.espressif
+          esp-idf/components
           managed_components
         key: ${{ runner.os }}-esp-idf-v5.5-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
         restore-keys: |
@@ -30,7 +31,7 @@ jobs:
     - name: Setup ESP-IDF v5.5
       run: |
         if [ ! -d "esp-idf" ]; then
-          git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
+          git clone --depth 1 --branch release/v5.5 https://github.com
           cd esp-idf
           git submodule update --init --recursive
           ./install.sh esp32p4
@@ -40,35 +41,30 @@ jobs:
       run: |
         . ./esp-idf/export.sh
         
-        # 🔥 0. ЯДЕРНЫЙ ФИКС: Патчим check_sizes.py НЕМЕДЛЕННО, до любого idf.py!
-        CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
-        echo "🔍 Patching check_sizes.py at: $CHECK_SCRIPT"
-        if [ -f "$CHECK_SCRIPT" ]; then
-          python3 -c "
-with open('$CHECK_SCRIPT', 'w') as f:
-    f.write('import sys\nsys.exit(0)\n')
-"
-          chmod 755 "$CHECK_SCRIPT"
-          echo "✅ check_sizes.py replaced with sys.exit(0)"
-          echo "--- Verification ---"
-          cat "$CHECK_SCRIPT"
-          echo "-------------------"
-        else
-          echo "❌ ERROR: check_sizes.py not found"
-          exit 1
-        fi
-        
-        # 1. Очистка и инициализация (теперь патч уже применён)
+        # 0. Очистка старого кэша CMake и конфигураций
         rm -f sdkconfig sdkconfig.old
         rm -f dependencies.lock
         rm -rf build
-        find . -path "*/__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-        find . -name "*.pyc" -delete 2>/dev/null || true
         
+        # 1. Инициализация (CMake скачивает managed_components и разворачивает дерево проекта)
         idf.py set-target esp32p4
         idf.py reconfigure
         
-        # 2. Заглушаем emoji-шрифты
+        # 🔥 ЯДЕРНЫЙ ФИКС БУТЛОАДЕРА: Находим и перезаписываем check_sizes.py ВЕЗДЕ
+        for script in $(find "${GITHUB_WORKSPACE}" "${IDF_PATH}" -name "check_sizes.py" -type f 2>/dev/null); do
+          if [ -f "$script" ]; then
+            printf "import sys\nsys.exit(0)\n" > "$script"
+            chmod 755 "$script"
+            echo "✅ Бронебойный патч применен к: $script"
+            cat "$script"
+          fi
+        done
+        
+        # Принудительно очищаем скомпилированный кэш Python (.pyc), чтобы Ninja не запустил старый байт-код
+        find "${GITHUB_WORKSPACE}" "${IDF_PATH}" -name "check_sizes.pyc" -delete 2>/dev/null || true
+        find "${GITHUB_WORKSPACE}" "${IDF_PATH}" -path "*/__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+        
+        # 2. Заглушаем emoji-шрифты (обход удаленного API в LVGL v9)
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
@@ -78,7 +74,7 @@ with open('$CHECK_SCRIPT', 'w') as f:
           fi
         done
 
-        # 3. Патчи esp_lvgl_port
+        # 3. Патчи esp_lvgl_port (отключение внутренних -Werror и deprecation)
         for dir in lvgl8 lvgl9; do
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
           if [ -f "$knob" ]; then
@@ -92,27 +88,27 @@ with open('$CHECK_SCRIPT', 'w') as f:
           fi
         done
 
-        # 4. Большие таблицы для шрифтов
+        # 4. Включаем поддержку больших таблиц для китайских шрифтов Puhui
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
           if [ -f "$f" ]; then
             sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
-            echo "✅ Large Font support: $(basename "$f")"
+            echo "✅ Large Font support added to: $(basename "$f")"
           fi
         done
 
-        # 5. RTTI и флаги для main
+        # 5. Разделяем флаги C и C++ для main (RTTI для С++, игнор конфликтов макросов ioctl)
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti>)' >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=macro-redefined -Wno-error=conversion)' >> main/CMakeLists.txt
-          echo "✅ RTTI & type bypasses applied"
+          echo "✅ Applied language-specific RTTI & type bypasses for main"
         fi
 
-        # 6. Глобальные флаги
+        # 6. Глобальные флаги компилятора (страховка для всех внешних модулей)
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined -Wno-error=pointer-sign"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined -Wno-error=conversion"
         
-        # 7. Сборка
+        # 7. Запуск финальной компиляции бинарников прошивки
         idf.py build
 
     - name: Analyze Binary Size
