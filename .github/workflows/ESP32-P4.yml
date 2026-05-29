@@ -40,8 +40,11 @@ jobs:
     - name: Configure & Build
       run: |
         . ./esp-idf/export.sh
-        # Применяет sdkconfig.defaults автоматически
+        # Удаляем старый конфиг, чтобы принудительно применить sdkconfig.defaults
+        rm -f sdkconfig
         idf.py set-target esp32p4
+        # Заставляем CMake полностью переконфигурировать проект перед сборкой
+        idf.py reconfigure
         idf.py build
 
     # ✅ SIZE ANALYSIS: покажет таблицу компонентов в логе
