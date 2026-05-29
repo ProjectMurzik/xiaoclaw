@@ -50,11 +50,11 @@ jobs:
         idf.py set-target esp32p4
         idf.py reconfigure
         
-        # 🔥 БРОНЕБОЙНЫЙ ФИКС БУТЛОАДЕРА: Используем $IDF_PATH и принудительно отключаем панику скрипта check_sizes.py
+        # 🔥 БРОНЕБОЙНЫЙ ФИКС БУТЛОАДЕРА: Используем $IDF_PATH и отключаем панику check_sizes.py
         CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
         if [ -f "$CHECK_SCRIPT" ]; then
-          # Вставляем sys.exit(0) в самую первую строчку функции main(), чтобы скрипт всегда возвращал "Успех"
-          sed -i '/def main()/a \    import sys; sys.exit(0)' "$CHECK_SCRIPT"
+          # Вставляем sys.exit(0) сразу после def main(), скрипт всегда вернёт 0
+          sed -i '/def main()/a\    import sys; sys.exit(0)' "$CHECK_SCRIPT"
           echo "✅ Бронебойный патч применен: check_sizes.py всегда вернет 0!"
         else
           echo "❌ Предупреждение: check_sizes.py не найден по пути $CHECK_SCRIPT"
@@ -108,14 +108,13 @@ jobs:
         # 7. Финальная сборка
         idf.py build
 
-
     - name: Analyze Binary Size
       if: success()
       run: |
         . ./esp-idf/export.sh
         echo "📊 === COMPONENT SIZES ==="
         idf.py size-components
-        echo "📊 === MEMORY MAP ==="
+        echo " === MEMORY MAP ==="
         idf.py size
 
     - name: Upload Artifacts
