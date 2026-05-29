@@ -1,6 +1,8 @@
-# ESP-IDF v5.4 sdkconfig.defaults для Murzik (ESP32-P4 + xiaoclaw)
-
 # ---------------------------------------------------------
+# ESP-IDF v5.5 sdkconfig.defaults для Murzik (ESP32-P4 + xiaoclaw)
+# Финальная версия для стабильной сборки
+# ---------------------------------------------------------
+
 # 1. Target & System
 # ---------------------------------------------------------
 CONFIG_IDF_TARGET="esp32p4"
@@ -10,7 +12,6 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_FREERTOS_INTERRUPT_BACKTRACE=n
 CONFIG_FREERTOS_CORETIMER_SYSTICK_LVL=3
 
-# ---------------------------------------------------------
 # 2. Flash & PSRAM (КРИТИЧНО для P4)
 # ---------------------------------------------------------
 CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
@@ -25,7 +26,6 @@ CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
 CONFIG_SPIRAM_USE_CAPS_ALLOC=n
 CONFIG_SPIRAM_IGNORE_NOTFOUND=n
 
-# ---------------------------------------------------------
 # 3. Partition Table
 # ---------------------------------------------------------
 CONFIG_PARTITION_TABLE_CUSTOM=y
@@ -34,7 +34,6 @@ CONFIG_PARTITION_TABLE_OFFSET=0x8000
 CONFIG_PARTITION_TABLE_MD5=y
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
-# ---------------------------------------------------------
 # 4. Wi-Fi 6 & Network
 # ---------------------------------------------------------
 CONFIG_ESP_WIFI_ENABLED=y
@@ -51,12 +50,10 @@ CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
 CONFIG_ESP_HTTP_CLIENT_ENABLE_BASIC_AUTH=y
 CONFIG_ESP_WS_CLIENT_ENABLE_TLS=y
 
-# ---------------------------------------------------------
 # 5. 🔥 CRITICAL: Board Selection (Fixes 5KB libmain.a!)
 # ---------------------------------------------------------
 CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y
 
-# ---------------------------------------------------------
 # 6. Display & LVGL
 # ---------------------------------------------------------
 CONFIG_LCD_ENABLE=y
@@ -71,28 +68,26 @@ CONFIG_LVGL_TICK_PERIOD_MS=5
 CONFIG_LVGL_DPI=96
 CONFIG_LVGL_ANTIALIAS=1
 CONFIG_LVGL_DISP_DEF_REFR_PERIOD=30
+CONFIG_LVGL_USE_IMGFONT=y
 
-# ---------------------------------------------------------
 # 7. Audio (I2S) & Processing
 # ---------------------------------------------------------
 CONFIG_ESP_I2S_ENABLE=y
 CONFIG_ESP_I2S_SUPPORTS_LEGACY=n
 CONFIG_ESP_I2S_ISR_IRAM_SAFE=y
 CONFIG_ESP_I2S_SUPPORTS_APLL=y
-CONFIG_USE_AUDIO_PROCESSOR=y  # <-- Подхватывает AFE или заглушку процессора
+CONFIG_USE_AUDIO_PROCESSOR=y
 
-# ---------------------------------------------------------
 # 8. ESP-SR (Voice) - Отключено для первой сборки
+# (Локальный WakeWord для русского языка пока не поддерживается в esp-sr)
 # ---------------------------------------------------------
 CONFIG_ESP_SR_ENABLE=n
 
-# ---------------------------------------------------------
 # 9. Language & Assets (Обязательно для xiaoclaw)
 # ---------------------------------------------------------
-CONFIG_LANGUAGE_EN_US=y          # <-- Без этого не сгенерируется language.json
-CONFIG_FLASH_DEFAULT_ASSETS=n    # <-- Включи 'y' только после проверки partitions.csv
+CONFIG_LANGUAGE_EN_US=y
+CONFIG_FLASH_DEFAULT_ASSETS=n
 
-# ---------------------------------------------------------
 # 10. Logging & Debug
 # ---------------------------------------------------------
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
@@ -103,5 +98,4 @@ CONFIG_BROWNOUT_DET=y
 CONFIG_ESP_TASK_WDT=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
 CONFIG_ESP_TASK_WDT_PANIC=n
-CONFIG_LVGL_USE_IMGFONT=y
 CONFIG_COMPILER_WARNINGS_AS_ERRORS=n
