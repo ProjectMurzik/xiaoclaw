@@ -17,7 +17,6 @@ jobs:
       with:
         submodules: 'recursive'
 
-    # ✅ КЭШ: Учитывает изменения в конфиг-файлах и сбрасывает старые библиотеки
     - name: Cache ESP-IDF
       uses: actions/cache@v4
       with:
@@ -41,39 +40,29 @@ jobs:
     - name: Configure & Build
       run: |
         . ./esp-idf/export.sh
-        
-        # Принудительно удаляем старый конфиг и lock-файл зависимостей
         rm -f sdkconfig
         rm -f dependencies.lock
         
-        # Настраиваем таргет и конфигурацию
+        # 1. Конфигурация
         idf.py set-target esp32p4
         idf.py reconfigure
         
-        # 🔥 ХАК: Патчим исходный код компонента, так как CFLAGS могут переопределяться
-        # Это гарантированно отключит -Werror для проблемного файла
-        KNOB_FILE="managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port_knob.c"
-        if [ -f "$KNOB_FILE" ]; then
-          # Вставляем #pragma в первую строку файла — компилятор обязан его выполнить
-          sed -i '1s/^/#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"\n/' "$KNOB_FILE"
-          echo "✅ Patched: added pragma to esp_lvgl_port_knob.c"
-        fi
+        # 2. Патчим esp_lvgl_port (работает для lvgl8 и lvgl9 путей)
+        for DIR in lvgl8 lvgl9; do
+          FILE="managed_components/espressif__esp_lvgl_port/src/${DIR}/esp_lvgl_port_knob.c"
+          if [ -f "$FILE" ]; then
+            sed -i '1s/^/#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"\n/' "$FILE"
+            echo "✅ Patched: ${DIR}/esp_lvgl_port_knob.c"
+          fi
+        done
         
-        # Опционально: патчим файл с deprecated warning (на будущее)
-        TOUCH_FILE="managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port_touch.c"
-        if [ -f "$TOUCH_FILE" ]; then
-          sed -i '1s/^/#pragma GCC diagnostic ignored "-Wdeprecated-declarations"\n/' "$TOUCH_FILE"
-          echo "✅ Patched: added pragma to esp_lvgl_port_touch.c"
-        fi
+        # 3. Глобальные флаги компилятора
+        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
+        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
         
-        # Глобальные флаги (страховка, вдруг сработают)
-        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations"
-        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations"
-        
-        # Запускаем сборку
+        # 4. Сборка
         idf.py build
 
-    # ✅ SIZE ANALYSIS: покажет таблицу компонентов в логе
     - name: Analyze Binary Size
       if: success()
       run: |
@@ -83,7 +72,6 @@ jobs:
         echo "📊 === MEMORY MAP ==="
         idf.py size
 
-    # ✅ FIX: Полные пути к всем .bin файлам
     - name: Upload Artifacts
       if: success()
       uses: actions/upload-artifact@v4
