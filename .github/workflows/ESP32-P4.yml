@@ -47,7 +47,7 @@ jobs:
         idf.py set-target esp32p4
         idf.py reconfigure
         
-        # 🔥 2. Заглушаем emoji-шрифты (обход lv_imgfont_create -> lv_imagefont_create)
+        # 🔥 2. Заглушаем emoji-шрифты (обход API lv_imgfont_create -> lv_imagefont_create)
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
@@ -57,24 +57,20 @@ jobs:
           fi
         done
 
-        # 🔥 3. Патчи esp_lvgl_port (отключение -Werror и фикс макросов)
+        # 🔥 3. Патчи esp_lvgl_port (отключение -Werror и деprecation)
         for dir in lvgl8 lvgl9; do
+          # knob.c: maybe-uninitialized
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
           if [ -f "$knob" ]; then
             sed -i '1i\#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
             echo "✅ Patched: ${dir}/esp_lvgl_port_knob.c"
           fi
           
+          # touch.c: deprecated declarations
           touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
           if [ -f "$touch_file" ]; then
             sed -i '1i\#pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
             echo "✅ Patched: ${dir}/esp_lvgl_port_touch.c"
-          fi
-
-          disp_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_disp.c"
-          if [ -f "$disp_file" ]; then
-            sed -i '1i\#define LV_COLOR_FORMAT_RGB565_SWAPPED LV_COLOR_FORMAT_RGB565' "$disp_file"
-            echo "✅ Patched: ${dir}/esp_lvgl_port_disp.c"
           fi
         done
 
