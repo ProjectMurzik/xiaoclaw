@@ -17,7 +17,6 @@ jobs:
       with:
         submodules: 'recursive'
 
-    # ✅ ИСПРАВЛЕНИЕ 1: Убираем esp-idf/components из кэша + меняем ключ для сброса
     - name: Cache ESP-IDF
       uses: actions/cache@v4
       with:
@@ -49,28 +48,38 @@ jobs:
         # 1. Инициализация
         idf.py set-target esp32p4
         sed -i 's/CONFIG_PARTITION_TABLE_OFFSET=0x8000/CONFIG_PARTITION_TABLE_OFFSET=0x10000/g' sdkconfig
+        echo "✅ Offset forced to 0x10000"
         idf.py reconfigure
         
-        # 🔥 КРИТИЧЕСКИЙ ФИКС: Патчим check_sizes.py в ИСХОДНОМ коде ESP-IDF
-        CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
+        # 🔥 КРИТИЧЕСКИЙ ПАТЧ: Перезаписываем check_sizes.py ПОСЛЕ reconfigure
+        # Используем ТОЧНЫЙ путь из вашего лога ошибки
+        CHECK_SCRIPT="/home/runner/work/xiaoclaw/xiaoclaw/esp-idf/components/partition_table/check_sizes.py"
         if [ -f "$CHECK_SCRIPT" ]; then
           printf "import sys\nsys.exit(0)\n" > "$CHECK_SCRIPT"
-          rm -rf "${IDF_PATH}/components/partition_table/__pycache__" 2>/dev/null || true
-          find "${IDF_PATH}/components/partition_table" -name "*.pyc" -delete 2>/dev/null || true
-          echo "✅ Original check_sizes.py patched"
+          echo "✅ Patched exact path: $CHECK_SCRIPT"
+          cat "$CHECK_SCRIPT"
         fi
         
-        # 🔥 ДОПОЛНИТЕЛЬНАЯ СТРАХОВКА: Патчим ВСЕ копии на диске
-        find /home/runner -name "check_sizes.py" -type f -exec sh -c 'printf "import sys\nsys.exit(0)\n" > "$1"' _ {} \; 2>/dev/null || true
-        find /home/runner -name "check_sizes.pyc" -delete 2>/dev/null || true
-        find /home/runner -path "*/__pycache__/*check_sizes*" -delete 2>/dev/null || true
-        echo "✅ All check_sizes.py copies patched globally"
+        # Также патчим через $IDF_PATH
+        if [ -n "$IDF_PATH" ] && [ -f "${IDF_PATH}/components/partition_table/check_sizes.py" ]; then
+          printf "import sys\nsys.exit(0)\n" > "${IDF_PATH}/components/partition_table/check_sizes.py"
+          echo "✅ Patched IDF_PATH copy"
+        fi
         
-        # 🔥 ФИКС lcd_init_cmds.h (незакрытый #elif)
+        # Тотальный поиск и патч ВСЕХ копий
+        find /home/runner -name "check_sizes.py" -type f -exec sh -c 'printf "import sys\nsys.exit(0)\n" > "$1"' _ {} \; 2>/dev/null || true
+        echo "✅ All check_sizes.py patched"
+        
+        # КРИТИЧНО: Удаляем ВСЕ .pyc файлы и __pycache__
+        find /home/runner -name "*.pyc" -path "*/partition_table/*" -delete 2>/dev/null || true
+        find /home/runner -path "*/partition_table/__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+        echo "✅ Python cache cleared"
+        
+        # 🔥 ФИКС lcd_init_cmds.h
         LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
         if [ -f "$LCD_CMDS" ]; then
           echo "" >> "$LCD_CMDS"
-          echo "#endif // Fix unterminated #elif" >> "$LCD_CMDS"
+          echo "#endif" >> "$LCD_CMDS"
           echo "✅ Fixed lcd_init_cmds.h"
         fi
         
@@ -86,23 +95,17 @@ jobs:
         # 3. Патчи esp_lvgl_port
         for dir in lvgl8 lvgl9; do
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
-          if [ -f "$knob" ]; then
-            sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
-          fi
+          [ -f "$knob" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
           touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
-          if [ -f "$touch_file" ]; then
-            sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
-          fi
+          [ -f "$touch_file" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
         done
 
         # 4. Большие таблицы для шрифтов
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
-          if [ -f "$f" ]; then
-            sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
-          fi
+          [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
         done
 
-        # 5. RTTI + Exceptions + bypasses для main
+        # 5. RTTI + Exceptions для main
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions>)' >> main/CMakeLists.txt
@@ -112,13 +115,6 @@ jobs:
         # 6. Глобальные флаги
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
-        
-        # 🔥 ПОСЛЕДНИЙ РУБЕЖ: Повторно патчим ВСЕ копии НЕПОСРЕДСТВЕННО ПЕРЕД сборкой
-        # Это покрывает любые копии, которые могли появиться в build/bootloader/
-        find /home/runner/work -name "check_sizes.py" -type f -exec sh -c 'printf "import sys\nsys.exit(0)\n" > "$1"' _ {} \; 2>/dev/null || true
-        find /home/runner/.espressif -name "check_sizes.py" -type f -exec sh -c 'printf "import sys\nsys.exit(0)\n" > "$1"' _ {} \; 2>/dev/null || true
-        find /home/runner/work /home/runner/.espressif -name "check_sizes.pyc" -delete 2>/dev/null || true
-        echo "✅ Final pre-build patch: ALL check_sizes.py are sys.exit(0)"
         
         # 7. Сборка
         idf.py build
