@@ -41,14 +41,21 @@ jobs:
       run: |
         . ./esp-idf/export.sh
         
-        # 0. Полная очистка для применения нового офсета таблицы разделов
+        # 🔥 CRITICAL: Полная очистка для применения нового офсета (0x8000 -> 0x10000)
         rm -f sdkconfig
         rm -f dependencies.lock
         rm -rf build
         
-        # 1. Инициализация
+        # 1. Инициализация и загрузка managed_components
         idf.py set-target esp32p4
         idf.py reconfigure
+        
+        # 🔥 ЖЕСТКИЙ ФИКС БУТЛОАДЕРА: Патчим check_sizes.py на всякий случай
+        CHECK_SCRIPT="./esp-idf/components/partition_table/check_sizes.py"
+        if [ -f "$CHECK_SCRIPT" ]; then
+          sed -i 's/default=0x8000/default=0x10000/g' "$CHECK_SCRIPT"
+          echo "✅ Hard patch applied to check_sizes.py"
+        fi
         
         # 🔥 2. Заглушаем emoji-шрифты (обход удаленного API в LVGL v9)
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
@@ -104,7 +111,7 @@ jobs:
         . ./esp-idf/export.sh
         echo "📊 === COMPONENT SIZES ==="
         idf.py size-components
-        echo " === MEMORY MAP ==="
+        echo "📊 === MEMORY MAP ==="
         idf.py size
 
     - name: Upload Artifacts
