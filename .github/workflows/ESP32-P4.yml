@@ -17,7 +17,7 @@ jobs:
       with:
         submodules: 'recursive'
 
-    # ✅ КЭШ: Теперь учитывает изменения в idf_component.yml и сбросит старые поломанные библиотеки
+    # ✅ КЭШ: Учитывает изменения в конфиг-файлах и сбрасывает старые библиотеки
     - name: Cache ESP-IDF
       uses: actions/cache@v4
       with:
@@ -46,12 +46,31 @@ jobs:
         rm -f sdkconfig
         rm -f dependencies.lock
         
-        # Глобально запрещаем превращать предупреждения в критические ошибки
+        # Настраиваем таргет и конфигурацию
+        idf.py set-target esp32p4
+        idf.py reconfigure
+        
+        # 🔥 ХАК: Патчим исходный код компонента, так как CFLAGS могут переопределяться
+        # Это гарантированно отключит -Werror для проблемного файла
+        KNOB_FILE="managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port_knob.c"
+        if [ -f "$KNOB_FILE" ]; then
+          # Вставляем #pragma в первую строку файла — компилятор обязан его выполнить
+          sed -i '1s/^/#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"\n/' "$KNOB_FILE"
+          echo "✅ Patched: added pragma to esp_lvgl_port_knob.c"
+        fi
+        
+        # Опционально: патчим файл с deprecated warning (на будущее)
+        TOUCH_FILE="managed_components/espressif__esp_lvgl_port/src/lvgl8/esp_lvgl_port_touch.c"
+        if [ -f "$TOUCH_FILE" ]; then
+          sed -i '1s/^/#pragma GCC diagnostic ignored "-Wdeprecated-declarations"\n/' "$TOUCH_FILE"
+          echo "✅ Patched: added pragma to esp_lvgl_port_touch.c"
+        fi
+        
+        # Глобальные флаги (страховка, вдруг сработают)
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations"
         
-        idf.py set-target esp32p4
-        idf.py reconfigure
+        # Запускаем сборку
         idf.py build
 
     # ✅ SIZE ANALYSIS: покажет таблицу компонентов в логе
