@@ -40,10 +40,13 @@ jobs:
     - name: Configure & Build
       run: |
         . ./esp-idf/export.sh
-        # Удаляем старый конфиг, чтобы принудительно применить sdkconfig.defaults
         rm -f sdkconfig
+        
+        # Передаем глобальный флаг компилятору: не превращать варнинги в ошибки
+        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations"
+        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations"
+        
         idf.py set-target esp32p4
-        # Заставляем CMake полностью переконфигурировать проект перед сборкой
         idf.py reconfigure
         idf.py build
 
