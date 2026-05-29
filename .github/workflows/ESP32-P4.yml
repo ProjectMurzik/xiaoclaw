@@ -24,9 +24,9 @@ jobs:
         path: |
           ~/.espressif
           esp-idf/components
-        key: ${{ runner.os }}-esp-idf-v5.4-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults') }}
+        key: ${{ runner.os }}-esp-idf-v5.5-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults') }}
         restore-keys: |
-          ${{ runner.os }}-esp-idf-v5.4-
+          ${{ runner.os }}-esp-idf-v5.5-
 
     - name: Setup ESP-IDF v5.5
       run: |
