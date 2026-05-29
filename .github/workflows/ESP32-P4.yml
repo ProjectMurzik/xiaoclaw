@@ -41,16 +41,16 @@ jobs:
       run: |
         . ./esp-idf/export.sh
         
-        # Принудительно очищаем старый конфигурационный кэш, чтобы сбросить старый офсет 0x8000
+        # 0. Полная очистка для применения нового офсета таблицы разделов
         rm -f sdkconfig
         rm -f dependencies.lock
         rm -rf build
         
-        # 1. Инициализируем проект заново (сгенерирует sdkconfig строго с офсетом 0x10000)
+        # 1. Инициализация
         idf.py set-target esp32p4
         idf.py reconfigure
         
-        # 2. Заглушаем emoji-шрифты (обход API lv_imgfont_create)
+        # 🔥 2. Заглушаем emoji-шрифты (обход удаленного API в LVGL v9)
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
@@ -75,18 +75,15 @@ jobs:
           fi
         done
 
-        # 🔥 4. Мост памяти и больших таблиц для шрифтов через безопасный 1i для Ubuntu
+        # 🔥 4. Включаем поддержку больших таблиц для шрифтов через безопасный 1i (фикс Puhui)
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
           if [ -f "$f" ]; then
-            # Вставляем три макроса по очереди, каждый на новой строке перед первой строкой файла
-            sed -i '1i #define lv_malloc lv_mem_alloc' "$f"
-            sed -i '1i #define lv_free lv_mem_free' "$f"
             sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
-            echo "✅ Memory & Large Font bridge: $(basename "$f")"
+            echo "✅ Large Font support added to: $(basename "$f")"
           fi
         done
 
-        # 5. Включаем RTTI для main компонента (фикс dynamic_cast)
+        # 🔥 5. Включаем RTTI для main (фикс dynamic_cast в audio_service.cc)
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo "target_compile_options(__idf_main PRIVATE -frtti)" >> main/CMakeLists.txt
@@ -94,15 +91,11 @@ jobs:
         fi
 
         # 6. Глобальные флаги компилятора (страховка)
-        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
-        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
+        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined"
+        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=macro-redefined"
         
-        # 7. Финальная компиляция
+        # 7. Финальная сборка
         idf.py build
-
-
-
-
 
     - name: Analyze Binary Size
       if: success()
@@ -110,7 +103,7 @@ jobs:
         . ./esp-idf/export.sh
         echo "📊 === COMPONENT SIZES ==="
         idf.py size-components
-        echo "📊 === MEMORY MAP ==="
+        echo " === MEMORY MAP ==="
         idf.py size
 
     - name: Upload Artifacts
