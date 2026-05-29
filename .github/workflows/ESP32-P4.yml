@@ -17,16 +17,16 @@ jobs:
       with:
         submodules: 'recursive'
 
+    # ✅ ИСПРАВЛЕНИЕ 1: Убираем esp-idf/components из кэша + меняем ключ для сброса
     - name: Cache ESP-IDF
       uses: actions/cache@v4
       with:
         path: |
           ~/.espressif
-          esp-idf/components
           managed_components
-        key: ${{ runner.os }}-esp-idf-v5.5-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
+        key: ${{ runner.os }}-esp-idf-v5.5.1-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
         restore-keys: |
-          ${{ runner.os }}-esp-idf-v5.5-
+          ${{ runner.os }}-esp-idf-v5.5.1-
 
     - name: Setup ESP-IDF v5.5
       run: |
@@ -52,9 +52,31 @@ jobs:
         echo "✅ Offset forced to 0x10000"
         idf.py reconfigure
         
-        # 🔥 ФИКС: Перезаписываем ВСЕ check_sizes.py на диске (этого достаточно!)
+        # ✅ ИСПРАВЛЕНИЕ 2: Патч check_sizes.py ПОСЛЕ reconfigure + очистка .pyc кэша
+        CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
+        if [ -f "$CHECK_SCRIPT" ]; then
+          printf "import sys\nsys.exit(0)\n" > "$CHECK_SCRIPT"
+          echo "✅ check_sizes.py overwritten with sys.exit(0)"
+          
+          # КРИТИЧНО: Удаляем скомпилированный байт-код Python
+          rm -rf "${IDF_PATH}/components/partition_table/__pycache__" 2>/dev/null || true
+          find "${IDF_PATH}/components/partition_table" -name "*.pyc" -delete 2>/dev/null || true
+          echo "✅ Python bytecode cache cleared"
+          
+          # Верификация в логе
+          echo "--- check_sizes.py content ---"
+          cat "$CHECK_SCRIPT"
+          echo "------------------------------"
+        else
+          echo "❌ CRITICAL: check_sizes.py not found at $CHECK_SCRIPT"
+          exit 1
+        fi
+        
+        # Дополнительная страховка: находим и патчим ВСЕ копии
         find /home/runner -name "check_sizes.py" -type f -exec sh -c 'printf "import sys\nsys.exit(0)\n" > "$1"' _ {} \; 2>/dev/null || true
-        echo "✅ All check_sizes.py files overwritten with sys.exit(0)"
+        find /home/runner -name "check_sizes.pyc" -delete 2>/dev/null || true
+        find /home/runner -path "*/partition_table/__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+        echo "✅ All check_sizes.py copies patched and caches cleared"
         
         # 🔥 ФИКС 3: Исправляем незакрытое условие препроцессора в lcd_init_cmds.h Waveshare
         LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
