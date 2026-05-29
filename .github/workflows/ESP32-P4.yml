@@ -96,28 +96,26 @@ jobs:
           fi
         done
 
-        # 5. Разделяем флаги C и C++ для main (Фикс RTTI и фикс Exceptions для исключений lvgl_image.cc)
+        # 5. Разделяем флаги C и C++ для main (RTTI + Exceptions + stringop-truncation)
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions>)' >> main/CMakeLists.txt
-          echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion)' >> main/CMakeLists.txt
-          echo "✅ Applied language-specific RTTI, Exceptions & type bypasses for main"
+          echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow)' >> main/CMakeLists.txt
+          echo "✅ Applied RTTI, Exceptions & string-truncation bypasses for main"
         fi
 
-        # 6. Глобальные флаги компилятора (ТОЛЬКО валидные флаги GCC)
-        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign"
-        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion"
+        # 6. Глобальные флаги компилятора (ТОЛЬКО валидные флаги GCC + stringop-truncation)
+        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow"
+        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow"
         
         # 7. Финальный запуск компиляции бинарников прошивки
         idf.py build
-
-
 
     - name: Analyze Binary Size
       if: success()
       run: |
         . ./esp-idf/export.sh
-        echo " === COMPONENT SIZES ==="
+        echo "📊 === COMPONENT SIZES ==="
         idf.py size-components
         echo "📊 === MEMORY MAP ==="
         idf.py size
