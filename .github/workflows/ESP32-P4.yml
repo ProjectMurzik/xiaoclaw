@@ -32,12 +32,13 @@ jobs:
           # Клонируем репозиторий только если его нет
           if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
             rm -rf esp-idf
-            git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
+            git clone --depth 1 --branch release/v5.5 https://github.com
             cd esp-idf
             git submodule update --init --recursive
+            cd .. # Возвращаемся в корень репозитория xiaoclaw после клонирования
           fi
           
-          # Всегда запускаем install.sh для настройки окружения под текущую сессию
+          # Теперь переход сработает гарантированно из корня
           cd esp-idf
           ./install.sh esp32p4
 
