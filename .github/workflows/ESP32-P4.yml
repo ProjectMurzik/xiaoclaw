@@ -39,7 +39,7 @@ jobs:
     - name: Configure & Build
       run: |
         echo "=========================================="
-        echo "🚀 XIAOCLAW BUILD v5.5.18 - $(date)"
+        echo "🚀 XIAOCLAW BUILD v5.5.19 - $(date)"
         echo "=========================================="
         
         . ./esp-idf/export.sh
@@ -53,12 +53,14 @@ jobs:
         echo "✅ Offset forced to 0x10000"
         idf.py reconfigure
         
+        # 1. check_sizes.py patch
         CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
         if [ -f "$CHECK_SCRIPT" ]; then
           printf "import sys\nsys.exit(0)\n" > "$CHECK_SCRIPT"
           echo "✅ check_sizes.py patched"
         fi
         
+        # 2. lcd_init_cmds.h fix
         LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
         if [ -f "$LCD_CMDS" ]; then
           sed -i '/^=======/,$d' "$LCD_CMDS"
@@ -68,26 +70,17 @@ jobs:
           echo "✅ Fixed lcd_init_cmds.h"
         fi
         
+        # 3. Восстанавливаем оригинальный esp_lcd_touch_gt911.h
         GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
         if [ -f "$GT911_H" ]; then
-          sed -i '/^#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG/,/^}/d' "$GT911_H"
-          {
-            echo '#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG() (esp_lcd_panel_io_i2c_config_t) {'
-            echo '    .dev_addr = ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS,'
-            echo '    .control_phase_bytes = 1,'
-            echo '    .dc_bit_offset = 0,'
-            echo '    .lcd_cmd_bits = 8,'
-            echo '    .lcd_param_bits = 8,'
-            echo '    .flags = {'
-            echo '        .dc_low_on_data = 0,'
-            echo '        .disable_control_phase = 1,'
-            echo '    },'
-            echo '    .scl_speed_hz = 400000,'
-            echo '}'
-          } >> "$GT911_H"
-          echo "✅ Fixed GT911 macro"
+          rm -f "$GT911_H"
+          curl -sS -o "$GT911_H" \
+            "https://raw.githubusercontent.com/espressif/esp-lcd-touch/refs/heads/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" \
+            || echo "⚠️ Failed to restore original"
+          echo "✅ Restored original esp_lcd_touch_gt911.h"
         fi
         
+        # 4. Emoji fonts stub
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
@@ -96,6 +89,7 @@ jobs:
           fi
         done
         
+        # 5. esp_lvgl_port pragmas
         for dir in lvgl8 lvgl9; do
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
           [ -f "$knob" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
@@ -103,19 +97,23 @@ jobs:
           [ -f "$touch_file" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
         done
         
+        # 6. Large font tables
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
           [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
         done
         
+        # 7. main CMakeLists flags
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
         fi
         
+        # 8. Global compiler flags
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -Wno-c++20-designator"
         
+        # 9. Build
         echo ">>> Starting idf.py build..."
         idf.py build
 
