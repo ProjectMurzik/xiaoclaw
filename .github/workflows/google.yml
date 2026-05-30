@@ -92,8 +92,8 @@ jobs:
           echo "✅ sdkconfig.defaults created with all required settings"
 
           idf.py set-target esp32p4
-          idf.py defconfig
 
+          
           # === Патч CMake ДО reconfigure (безопасный awk с экранированием скобок) ===
           BOOT_CMAKE="${IDF_PATH}/components/bootloader/subproject/main/CMakeLists.txt"
           if [ -f "$BOOT_CMAKE" ]; then
