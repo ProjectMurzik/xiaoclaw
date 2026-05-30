@@ -32,7 +32,7 @@ jobs:
           # Клонируем репозиторий только если его нет
           if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
             rm -rf esp-idf
-            git clone --depth 1 --branch release/v5.5 https://github.com
+            git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
             cd esp-idf
             git submodule update --init --recursive
             cd .. # Возвращаемся в корень репозитория xiaoclaw после клонирования
