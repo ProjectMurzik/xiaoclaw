@@ -55,94 +55,51 @@ jobs:
         echo "✅ Offset forced to 0x10000"
         idf.py reconfigure
         
-        # 🔥 ФИКС check_sizes.py (прямой патч)
-        CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
-        if [ -f "$CHECK_SCRIPT" ]; then
-          printf "import sys\nsys.exit(0)\n" > "$CHECK_SCRIPT"
-          echo "✅ Patched: check_sizes.py"
-        fi
-        
-        # 🔥 ЗАПУСК WATCHDOG для постоянной перезаписи check_sizes.py
-        (
-          while true; do
-            find /home/runner -name "check_sizes.py" -type f 2>/dev/null | while read -r script; do
-              if [ -f "$script" ] && ! grep -q "sys.exit(0)" "$script" 2>/dev/null; then
-                printf "import sys\nsys.exit(0)\n" > "$script" 2>/dev/null || true
-              fi
-            done
-            sleep 0.3
-          done
-        ) &
-        WATCHDOG_PID=$!
-        echo "✅ Watchdog started (PID: $WATCHDOG_PID)"
-        
-        # 🔥 ФИКС lcd_init_cmds.h (незакрытый #elif)
+        # 🔥 ФИКС lcd_init_cmds.h - заменяем #elif CONFIG_ на #elif defined(CONFIG_
         LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
         if [ -f "$LCD_CMDS" ]; then
-          # Проверяем, есть ли #endif в последних 10 строках
-          if ! tail -10 "$LCD_CMDS" | grep -q "^#endif"; then
-            echo "" >> "$LCD_CMDS"
-            echo "#endif // Fix unterminated #elif" >> "$LCD_CMDS"
+            sed -i 's/#elif CONFIG_/#elif defined(CONFIG_/g' "$LCD_CMDS"
+            if ! tail -5 "$LCD_CMDS" | grep -q "^#endif"; then
+                echo "" >> "$LCD_CMDS"
+                echo "#endif" >> "$LCD_CMDS"
+            fi
             echo "✅ Fixed lcd_init_cmds.h"
-          else
-            echo "✅ lcd_init_cmds.h already has #endif"
-          fi
         fi
         
-        # 🔥 ФИКС GT911 designator order (добавляем pragma в esp32-p4-wifi6-touch-lcd.cc)
+        # 🔥 ФИКС esp32-p4-wifi6-touch-lcd.cc - правильные pragma для C++
         TOUCH_CC="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/esp32-p4-wifi6-touch-lcd.cc"
         if [ -f "$TOUCH_CC" ]; then
-          # Проверяем, есть ли pragma в первых 10 строках
-          if ! head -10 "$TOUCH_CC" | grep -q "pragma GCC diagnostic ignored.*Wdesignated-init"; then
-            sed -i '1i #pragma GCC diagnostic ignored "-Wdesignated-init"' "$TOUCH_CC"
-            sed -i '2i #pragma GCC diagnostic ignored "-Werror"' "$TOUCH_CC"
-            echo "✅ Fixed GT911 designator order in esp32-p4-wifi6-touch-lcd.cc"
-          else
-            echo "✅ GT911 pragma already present"
-          fi
+            sed -i '/^#pragma GCC diagnostic/d' "$TOUCH_CC"
+            sed -i '1i #pragma GCC diagnostic ignored "-Wpedantic"\n#pragma GCC diagnostic ignored "-Werror"' "$TOUCH_CC"
+            echo "✅ Fixed esp32-p4-wifi6-touch-lcd.cc"
         fi
         
-        # Заглушаем emoji-шрифты
+        # Остальные патчи (emoji fonts, esp_lvgl_port, etc.)
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
             echo '#include "cbin_font.h"' > "$f"
             echo "void ${base}_init(void) {}" >> "$f"
-            echo "✅ Stubbed: $(basename "$f")"
           fi
         done
 
-        # Патчи esp_lvgl_port
         for dir in lvgl8 lvgl9; do
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
-          if [ -f "$knob" ]; then
-            sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
-            echo "✅ Patched: ${dir}/esp_lvgl_port_knob.c"
-          fi
+          [ -f "$knob" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
           touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
-          if [ -f "$touch_file" ]; then
-            sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
-            echo "✅ Patched: ${dir}/esp_lvgl_port_touch.c"
-          fi
+          [ -f "$touch_file" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
         done
 
-        # Большие таблицы для шрифтов
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
-          if [ -f "$f" ]; then
-            sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
-            echo "✅ Large Font support added to: $(basename "$f")"
-          fi
+          [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
         done
 
-        # RTTI + Exceptions для main
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init)' >> main/CMakeLists.txt
-          echo "✅ C++ flags configured"
         fi
 
-        # Глобальные флаги
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -fpermissive"
         
