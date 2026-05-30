@@ -39,7 +39,7 @@ jobs:
     - name: Configure & Build
       run: |
         echo "=========================================="
-        echo "🚀 XIAOCLAW BUILD v5.5.13 - $(date)"
+        echo "🚀 XIAOCLAW BUILD v5.5.14 - $(date)"
         echo "=========================================="
         
         . ./esp-idf/export.sh
@@ -55,40 +55,15 @@ jobs:
         echo "✅ Offset forced to 0x10000"
         idf.py reconfigure
         
-        # 🔥 ПАТЧ check_sizes.py (bypass bootloader size check)
-        CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
-        if [ -f "$CHECK_SCRIPT" ]; then
-          printf "import sys\nsys.exit(0)\n" > "$CHECK_SCRIPT"
-          echo "✅ Patched: check_sizes.py"
-        fi
+        # 🔥 ФИКС: Добавляем #undef для макросов _IO (подавление предупреждений)
+        echo ">>> Adding #undef guards for _IO macros..."
+        find . -name "*.h" -type f -exec sed -i '/#include <linux\/videodev2.h>/i #undef _IO\n#undef _IOR\n#undef _IOW\n#undef _IOWR' {} \; 2>/dev/null || true
         
-        # 🔥 ПАТЧ lcd_init_cmds.h - ПРАВИЛЬНО исправляем синтаксис
-        LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
-        if [ -f "$LCD_CMDS" ]; then
-          # Шаг 1: Убираем все ) в конце строк с #elif
-          sed -i 's/^#elif CONFIG_\([A-Z0-9_]*\))$/#elif CONFIG_\1/g' "$LCD_CMDS"
-          # Шаг 2: Заменяем #elif CONFIG_ на #elif defined(CONFIG_)
-          sed -i 's/^#elif CONFIG_\([A-Z0-9_]*\)$/#elif defined(CONFIG_\1)/g' "$LCD_CMDS"
-          # Шаг 3: Добавляем #endif в конец файла
-          echo "" >> "$LCD_CMDS"
-          echo "#endif" >> "$LCD_CMDS"
-          echo "✅ Fixed lcd_init_cmds.h syntax"
-        fi
+        # 🔥 ОСНОВНОЙ ФИКС: Исправляем designator order через -fpermissive
+        export CXXFLAGS="$CXXFLAGS -fpermissive"
+        echo "✅ Added -fpermissive for C++20 designated-init compatibility"
         
-        # 🔥 ПАТЧ esp_lcd_touch_gt911.h - исправляем designator order
-        GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
-        if [ -f "$GT911_H" ]; then
-          # Добавляем pragma для игнорирования designator order ошибки
-          if ! head -5 "$GT911_H" | grep -q "pragma GCC diagnostic"; then
-            sed -i '1i #pragma GCC diagnostic ignored "-Wdesignated-init"' "$GT911_H"
-            echo "✅ Added pragma to esp_lcd_touch_gt911.h"
-          fi
-        fi
-        
-        # Патчи для managed_components
-        echo ">>> Patching managed_components..."
-        
-        # Emoji fonts stub
+        # 2. Заглушаем emoji-шрифты
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
@@ -96,35 +71,32 @@ jobs:
             echo "void ${base}_init(void) {}" >> "$f"
           fi
         done
-        echo "✅ Emoji fonts stubbed"
-        
-        # esp_lvgl_port pragmas
+
+        # 3. Патчи esp_lvgl_port
         for dir in lvgl8 lvgl9; do
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
           [ -f "$knob" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
           touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
           [ -f "$touch_file" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
         done
-        echo "✅ esp_lvgl_port patched"
-        
-        # Large font support
+
+        # 4. Большие таблицы для шрифтов
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
           [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
         done
-        echo "✅ Large font support added"
-        
-        # C++ flags для main
+
+        # 5. RTTI + Exceptions для main
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init)' >> main/CMakeLists.txt
-          echo "✅ C++ flags added to main/CMakeLists.txt"
+          echo "✅ C++ flags configured"
         fi
-        
-        # Глобальные флаги
+
+        # 6. Глобальные флаги
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -fpermissive"
-        echo "✅ Global compiler flags set"
+        echo "✅ Global compiler flags set with -fpermissive"
         
         # 7. Сборка
         echo ">>> Starting idf.py build..."
