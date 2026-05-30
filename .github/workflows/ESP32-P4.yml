@@ -12,119 +12,119 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        submodules: 'recursive'
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
 
-    - name: Cache ESP-IDF
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.espressif
-          managed_components
-        key: ${{ runner.os }}-esp-idf-v5.5.9-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
-        restore-keys: |
-          ${{ runner.os }}-esp-idf-v5.5.9-
+      - name: Cache ESP-IDF
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.espressif
+            managed_components
+          key: ${{ runner.os }}-esp-idf-v5.5.9-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-esp-idf-v5.5.9-
 
-    - name: Setup ESP-IDF v5.5
-      run: |
-        if [ ! -d "esp-idf" ]; then
-          git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
-          cd esp-idf
-          git submodule update --init --recursive
-          ./install.sh esp32p4
-        fi
-
-    - name: Configure & Build
-      run: |
-        echo "=========================================="
-        echo " XIAOCLAW BUILD FINAL - $(date)"
-        echo "=========================================="
-        
-        . ./esp-idf/export.sh
-        
-        # 🔥 Патч check_sizes.py для обхода ошибки размера бутлоадера
-        CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
-        printf 'import sys\ndef main():\n    return 0\nif __name__ == "__main__":\n    sys.exit(main())\n' > "$CHECK_SCRIPT"
-        echo "✅ check_sizes.py patched"
-        
-        rm -f sdkconfig sdkconfig.old
-        rm -f dependencies.lock
-        rm -rf build
-        
-        idf.py set-target esp32p4
-        sed -i 's/CONFIG_PARTITION_TABLE_OFFSET=0x8000/CONFIG_PARTITION_TABLE_OFFSET=0x10000/g' sdkconfig
-        echo "✅ Offset forced to 0x10000"
-        idf.py reconfigure
-        
-        # 🔥 Исправление lcd_init_cmds.h (добавление #endif в конец файла)
-        LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
-        if [ -f "$LCD_CMDS" ]; then
-            if ! tail -5 "$LCD_CMDS" | grep -q "#endif"; then
-                echo "" >> "$LCD_CMDS"
-                echo "#endif" >> "$LCD_CMDS"
-                echo "✅ Fixed lcd_init_cmds.h"
-            else
-                echo "✅ lcd_init_cmds.h already has #endif"
-            fi
-        fi
-        
-        # Заглушаем emoji-шрифты
-        for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
-          if [ -f "$f" ]; then
-            base=$(basename "$f" .c)
-            echo '#include "cbin_font.h"' > "$f"
-            echo "void ${base}_init(void) {}" >> "$f"
+      - name: Setup ESP-IDF v5.5
+        run: |
+          if [ ! -d "esp-idf" ]; then
+            git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
+            cd esp-idf
+            git submodule update --init --recursive
+            ./install.sh esp32p4
           fi
-        done
 
-        # Патчи esp_lvgl_port
-        for dir in lvgl8 lvgl9; do
-          knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
-          [ -f "$knob" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
-          touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
-          [ -f "$touch_file" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
-        done
+      - name: Configure & Build
+        run: |
+          echo "=========================================="
+          echo " XIAOCLAW BUILD FINAL - $(date)"
+          echo "=========================================="
+          
+          . ./esp-idf/export.sh
+          
+          # 🔥 Патч check_sizes.py для обхода ошибки размера бутлоадера
+          CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
+          printf 'import sys\ndef main():\n    return 0\nif __name__ == "__main__":\n    sys.exit(main())\n' > "$CHECK_SCRIPT"
+          echo "✅ check_sizes.py patched"
+          
+          rm -f sdkconfig sdkconfig.old
+          rm -f dependencies.lock
+          rm -rf build
+          
+          idf.py set-target esp32p4
+          sed -i 's/CONFIG_PARTITION_TABLE_OFFSET=0x8000/CONFIG_PARTITION_TABLE_OFFSET=0x10000/g' sdkconfig
+          echo "✅ Offset forced to 0x10000"
+          idf.py reconfigure
+          
+          # 🔥 Исправление lcd_init_cmds.h (добавление #endif в конец файла)
+          LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
+          if [ -f "$LCD_CMDS" ]; then
+              if ! tail -5 "$LCD_CMDS" | grep -q "#endif"; then
+                  echo "" >> "$LCD_CMDS"
+                  echo "#endif" >> "$LCD_CMDS"
+                  echo "✅ Fixed lcd_init_cmds.h"
+              else
+                  echo "✅ lcd_init_cmds.h already has #endif"
+              fi
+          fi
+          
+          # Заглушаем emoji-шрифты
+          for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
+            if [ -f "$f" ]; then
+              base=$(basename "$f" .c)
+              echo '#include "cbin_font.h"' > "$f"
+              echo "void ${base}_init(void) {}" >> "$f"
+            fi
+          done
 
-        # Большие таблицы для шрифтов
-        for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
-          [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
-        done
+          # Патчи esp_lvgl_port
+          for dir in lvgl8 lvgl9; do
+            knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
+            [ -f "$knob" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
+            touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
+            [ -f "$touch_file" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
+          done
 
-        # Флаги для main
-        if [ -f "main/CMakeLists.txt" ]; then
-          echo "" >> main/CMakeLists.txt
-          echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions>)' >> main/CMakeLists.txt
-          echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init)' >> main/CMakeLists.txt
-        fi
+          # Большие таблицы для шрифтов
+          for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
+            [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
+          done
 
-        # Глобальные флаги
-        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
-        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
-        
-        echo ">>> Starting idf.py build..."
-        idf.py build
-        BUILD_EXIT=$?
-        
-        exit $BUILD_EXIT
+          # Флаги для main
+          if [ -f "main/CMakeLists.txt" ]; then
+            echo "" >> main/CMakeLists.txt
+            echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions>)' >> main/CMakeLists.txt
+            echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init)' >> main/CMakeLists.txt
+          fi
 
-    - name: Analyze Binary Size
-      if: success()
-      run: |
-        . ./esp-idf/export.sh
-        echo "📊 === COMPONENT SIZES ==="
-        idf.py size-components
-        echo "📊 === MEMORY MAP ==="
-        idf.py size
+          # Глобальные флаги
+          export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
+          export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
+          
+          echo ">>> Starting idf.py build..."
+          idf.py build
+          BUILD_EXIT=$?
+          
+          exit $BUILD_EXIT
 
-    - name: Upload Artifacts
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: murzik-esp32p4-firmware
-        path: |
-          build/*.bin
-          build/bootloader/*.bin
-          build/partition_table/*.bin
-        retention-days: 7
+      - name: Analyze Binary Size
+        if: success()
+        run: |
+          . ./esp-idf/export.sh
+          echo "📊 === COMPONENT SIZES ==="
+          idf.py size-components
+          echo "📊 === MEMORY MAP ==="
+          idf.py size
+
+      - name: Upload Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: murzik-esp32p4-firmware
+          path: |
+            build/*.bin
+            build/bootloader/*.bin
+            build/partition_table/*.bin
+          retention-days: 7
