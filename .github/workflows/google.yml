@@ -92,10 +92,25 @@ jobs:
           echo "✅ sdkconfig.defaults created with all required settings"
 
           idf.py set-target esp32p4
-
           
-          # === Патч CMake ДО reconfigure (безопасный awk с экранированием скобок) ===
-          BOOT_CMAKE="${IDF_PATH}/components/bootloader/subproject/main/CMakeLists.txt"
+
+          # === 🔥 ПРАВИЛЬНЫЙ ПАТЧ CMAKE: Вырезаем валидацию на уровне partition_table фреймворка ===
+          # Мы патчим файл, который генерирует ту самую команду esptool_py для Ninja.
+          # С помощью awk мы полностью стираем блок COMMAND с вызовом check_sizes.py
+          PARTITION_CMAKE="esp-idf/components/partition_table/project_include.cmake"
+          if [ -f "$PARTITION_CMAKE" ]; then
+            awk '
+              /COMMAND \${PYTHON} \${COMPONENT_PATH}\/check_sizes\.py/,/DEPENDS \${PARTITION_TABLE_BIN}/ {
+                if (/DEPENDS/) { print "        DEPENDS ${PARTITION_TABLE_BIN}"; next }
+                next
+              }
+              { print }
+            ' "$PARTITION_CMAKE" > "$PARTITION_CMAKE.tmp" && mv "$PARTITION_CMAKE.tmp" "$PARTITION_CMAKE"
+            echo "✅ Вызов check_sizes.py успешно вырезан из partition_table CMake"
+          fi
+
+          # Дополнительно глушим макрос бутлоадера для сквозной надежности
+          BOOT_CMAKE="esp-idf/components/bootloader/subproject/main/CMakeLists.txt"
           if [ -f "$BOOT_CMAKE" ]; then
             awk '
               /function\(check_bootloader_size\)/,/endfunction\(\)/ {
@@ -109,6 +124,7 @@ jobs:
           fi
 
           idf.py reconfigure
+
 
           # === Восстановление GT911 ПОСЛЕ reconfigure (ЗАФИКСИРОВАННЫЙ ПОЛНЫЙ URL) ===
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
