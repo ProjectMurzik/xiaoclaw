@@ -23,9 +23,9 @@ jobs:
         path: |
           ~/.espressif
           managed_components
-        key: ${{ runner.os }}-esp-idf-v5.5.7-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
+        key: ${{ runner.os }}-esp-idf-v5.5.8-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
         restore-keys: |
-          ${{ runner.os }}-esp-idf-v5.5.7-
+          ${{ runner.os }}-esp-idf-v5.5.8-
 
     - name: Setup ESP-IDF v5.5
       run: |
@@ -39,30 +39,26 @@ jobs:
     - name: Configure & Build
       run: |
         echo "=========================================="
-        echo "🚀 XIAOCLAW BUILD v5.5.17 - $(date)"
+        echo "🚀 XIAOCLAW BUILD v5.5.18 - $(date)"
         echo "=========================================="
         
         . ./esp-idf/export.sh
         
-        # 0. Полная очистка
         rm -f sdkconfig sdkconfig.old
         rm -f dependencies.lock
         rm -rf build
         
-        # 1. Инициализация
         idf.py set-target esp32p4
         sed -i 's/CONFIG_PARTITION_TABLE_OFFSET=0x8000/CONFIG_PARTITION_TABLE_OFFSET=0x10000/g' sdkconfig
         echo "✅ Offset forced to 0x10000"
         idf.py reconfigure
         
-        # 🔥 Прямая замена check_sizes.py
         CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
         if [ -f "$CHECK_SCRIPT" ]; then
           printf "import sys\nsys.exit(0)\n" > "$CHECK_SCRIPT"
           echo "✅ check_sizes.py patched"
         fi
         
-        # 🔥 Удаляем git merge conflict из lcd_init_cmds.h
         LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
         if [ -f "$LCD_CMDS" ]; then
           sed -i '/^=======/,$d' "$LCD_CMDS"
@@ -72,29 +68,26 @@ jobs:
           echo "✅ Fixed lcd_init_cmds.h"
         fi
         
-        # 🔥 Исправляем макрос GT911 (designator order)
         GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
         if [ -f "$GT911_H" ]; then
-          sed -i '/^#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG/,/^}$/c\
-#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG() (esp_lcd_panel_io_i2c_config_t) { \
-        .dev_addr = ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS, \
-        .control_phase_bytes = 1, \
-        .dc_bit_offset = 0, \
-        .lcd_cmd_bits = 8, \
-        .lcd_param_bits = 8, \
-        .flags = { \
-            .dc_low_on_data = 0, \
-            .disable_control_phase = 1, \
-        }, \
-        .scl_speed_hz = 400000, \
-}' "$GT911_H"
-          echo "✅ Fixed GT911 macro designator order"
+          sed -i '/^#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG/,/^}/d' "$GT911_H"
+          {
+            echo '#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG() (esp_lcd_panel_io_i2c_config_t) {'
+            echo '    .dev_addr = ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS,'
+            echo '    .control_phase_bytes = 1,'
+            echo '    .dc_bit_offset = 0,'
+            echo '    .lcd_cmd_bits = 8,'
+            echo '    .lcd_param_bits = 8,'
+            echo '    .flags = {'
+            echo '        .dc_low_on_data = 0,'
+            echo '        .disable_control_phase = 1,'
+            echo '    },'
+            echo '    .scl_speed_hz = 400000,'
+            echo '}'
+          } >> "$GT911_H"
+          echo "✅ Fixed GT911 macro"
         fi
         
-        # 🔥 Добавляем #undef для макросов _IO
-        find . -name "*.h" -type f -exec sed -i '/#include <linux\/videodev2.h>/i #undef _IO\n#undef _IOR\n#undef _IOW\n#undef _IOWR' {} \; 2>/dev/null || true
-        
-        # 2. Заглушаем emoji-шрифты
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
@@ -102,32 +95,27 @@ jobs:
             echo "void ${base}_init(void) {}" >> "$f"
           fi
         done
-
-        # 3. Патчи esp_lvgl_port
+        
         for dir in lvgl8 lvgl9; do
           knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
           [ -f "$knob" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
           touch_file="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_touch.c"
           [ -f "$touch_file" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
         done
-
-        # 4. Большие таблицы для шрифтов
+        
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
           [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
         done
-
-        # 5. RTTI + Exceptions для main
+        
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
         fi
-
-        # 6. Глобальные флаги
+        
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
         export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -Wno-c++20-designator"
         
-        # 7. Сборка
         echo ">>> Starting idf.py build..."
         idf.py build
 
