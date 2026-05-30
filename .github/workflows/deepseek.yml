@@ -91,7 +91,7 @@ jobs:
           echo "CONFIG_MIMI_SERVER_URL=wss://api.xiaozhi.me:443/v1" >> sdkconfig.defaults
 
           idf.py set-target esp32p4
-          idf.py defconfig
+         
 
           # === Патч CMake ДО reconfigure ===
           BOOT_CMAKE="${IDF_PATH}/components/bootloader/subproject/main/CMakeLists.txt"
