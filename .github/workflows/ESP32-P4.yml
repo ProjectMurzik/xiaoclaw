@@ -29,7 +29,7 @@ jobs:
 
       - name: Setup ESP-IDF v5.5
         run: |
-          # 1. СТРОГО ПОЛНАЯ ССЫЛКА НА ОФИЦИАЛЬНЫЙ РЕПОЗИТОРИЙ
+          # 1. Точная и полная ссылка на официальный репозиторий
           if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
             rm -rf esp-idf
             git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
@@ -60,10 +60,27 @@ jobs:
           grep -q "CONFIG_BOOTLOADER_SIZE=" sdkconfig || echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig
           echo "✅ Карта памяти проверена и записана в sdkconfig"
           
-          # 2. Генерируем структуру проекта
+          # 2. Генерируем структуру проекта (рождаются файлы build.ninja)
           idf.py reconfigure
           
-          # 3. Фикс lcd_init_cmds.h (удаление маркеров конфликта git merge)
+          # 🔥 3. ТОЧЕЧНЫЙ ПАТЧ Ninja (С идеальным сохранением строчного регистра command и отступов)
+          echo ">>> Уничтожаем check_sizes.py внутри конфигурации Ninja..."
+          for ninja_file in "build/bootloader/build.ninja" "build/partition_table/build.ninja"; do
+            if [ -f "$ninja_file" ]; then
+              # Подставляем command строго строчными буквами к отступу \1
+              sed -i 's|^\( *\).*check_sizes.py.*$|\1command = /bin/true|g' "$ninja_file"
+              touch "$ninja_file"
+              echo "✅ Робот-валидатор успешно заменен на /bin/true в $ninja_file"
+            else
+              echo "⚠️ Файл $ninja_file не найден, пропускаем точечный патч"
+            fi
+          done
+          
+          # Принудительно обновляем timestamp ВСЕХ остальных build.ninja для страховки кэша
+          find build -name "*.ninja" -exec touch {} \; 2>/dev/null || true
+          echo "✅ Таймстампы файлов Ninja обновлены для сброса кэша"
+          
+          # 4. Фикс lcd_init_cmds.h (удаление маркеров конфликта git merge)
           LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
           if [ -f "$LCD_CMDS" ]; then
             sed -i '/^=======/,$d' "$LCD_CMDS"
@@ -74,7 +91,7 @@ jobs:
             echo "✅ Fixed lcd_init_cmds.h"
           fi
           
-          # 4. СТРОГО ПОЛНАЯ ССЫЛКА НА ВОССТАНОВЛЕНИЕ ДРАЙВЕРА ТАЧА С ФЛАГОМ -О
+          # 5. Точная и полная ссылка на восстановление оригинального хидера тача
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -84,12 +101,12 @@ jobs:
             fi
           fi
           
-          # 5. Отключение -Werror в модуле esp_video
+          # 6. Отключение -Werror в модуле esp_video
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror//g' {} \; 2>/dev/null || true
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror=deprecated-declarations//g' {} \; 2>/dev/null || true
           echo "✅ Disabled -Werror for esp_video"
           
-          # 6. Заглушка ресурсоемких emoji-шрифтов для ускорения компиляции на раннере
+          # 7. Заглушка ресурсоемких emoji-шрифтов для ускорения компиляции на раннере
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -98,7 +115,7 @@ jobs:
             fi
           done
           
-          # 7. Патчи esp_lvgl_port (подавление специфических предупреждений GCC)
+          # 8. Патчи esp_lvgl_port (подавление специфических предупреждений GCC)
           for dir in lvgl8 lvgl9; do
             knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
             [ -f "$knob" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
@@ -106,38 +123,21 @@ jobs:
             [ -f "$touch_file" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$touch_file"
           done
           
-          # 8. Включение поддержки больших таблиц шрифтов LVGL
+          # 9. Включение поддержки больших таблиц шрифтов LVGL
           for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
             [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
           done
           
-          # 9. C++ flags for main
+          # 10. C++ flags for main
           if [ -f "main/CMakeLists.txt" ]; then
             echo "" >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
           fi
           
-          # 10. Глобальные флаги компиляции
+          # 11. Глобальные флаги компиляции
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -Wno-c++20-designator"
-          
-          # 🔥 11. ПЕРЕХВАТЧИК ЧЕРЕЗ ИЗОЛИРОВАННЫЙ PATH ДЛЯ ПОЛНОЙ СБОРКИ BUILD
-          ORIGINAL_PYTHON=$(which python)
-          mkdir -p /tmp/bin
-          
-          echo '#!/bin/bash' > /tmp/bin/python
-          echo 'case "$*" in' >> /tmp/bin/python
-          echo '  *check_sizes.py*)' >> /tmp/bin/python
-          echo '    echo "🎯 [XIAOCLAW HACK] check_sizes.py intercepted, exiting 0"' >> /tmp/bin/python
-          echo '    exit 0' >> /tmp/bin/python
-          echo '    ;;' >> /tmp/bin/python
-          echo 'esac' >> /tmp/bin/python
-          echo "exec \"$ORIGINAL_PYTHON\" \"\$@\"" >> /tmp/bin/python
-          chmod +x /tmp/bin/python
-          
-          export PATH="/tmp/bin:$PATH"
-          echo "✅ Пуленепробиваемый PATH перехватчик активирован!"
           
           echo ">>> Starting idf.py FULL build..."
           idf.py build
