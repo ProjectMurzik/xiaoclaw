@@ -23,9 +23,9 @@ jobs:
         path: |
           ~/.espressif
           managed_components
-        key: ${{ runner.os }}-esp-idf-v5.5.1-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
+        key: ${{ runner.os }}-esp-idf-v5.5.2-${{ hashFiles('**/CMakeLists.txt', '**/sdkconfig.defaults', '**/idf_component.yml') }}
         restore-keys: |
-          ${{ runner.os }}-esp-idf-v5.5.1-
+          ${{ runner.os }}-esp-idf-v5.5.2-
 
     - name: Setup ESP-IDF v5.5
       run: |
@@ -39,7 +39,7 @@ jobs:
     - name: Configure & Build
       run: |
         echo "=========================================="
-        echo "🚀 XIAOCLAW BUILD v5.5.8 - $(date)"
+        echo "🚀 XIAOCLAW BUILD v5.5.9 - $(date)"
         echo "=========================================="
         
         . ./esp-idf/export.sh
@@ -55,15 +55,14 @@ jobs:
         echo "✅ Offset forced to 0x10000"
         idf.py reconfigure
         
-        # 🔥 ПАТЧ #1: check_sizes.py (ОСНОВНОЙ ПАТЧ)
+        # 🔥 ПАТЧ #1: check_sizes.py
         CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
         if [ -f "$CHECK_SCRIPT" ]; then
           printf "import sys\nsys.exit(0)\n" > "$CHECK_SCRIPT"
           echo "✅ Patched: $CHECK_SCRIPT"
-          cat "$CHECK_SCRIPT"
         fi
         
-        # 🔥 WATCHDOG: Постоянная перезапись check_sizes.py во время сборки
+        # 🔥 WATCHDOG: Постоянная перезапись check_sizes.py
         (
           while true; do
             find /home/runner -name "check_sizes.py" -type f 2>/dev/null | while read -r script; do
@@ -77,12 +76,22 @@ jobs:
         WATCHDOG_PID=$!
         echo "✅ Watchdog started (PID: $WATCHDOG_PID)"
         
-        # 🔥 ПАТЧ #2: lcd_init_cmds.h (ДОБАВЛЯЕМ #endif)
+        # 🔥 ПАТЧ #2: lcd_init_cmds.h - ДОБАВЛЯЕМ #endif В КОНЕЦ ФАЙЛА
         LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
         if [ -f "$LCD_CMDS" ]; then
-          echo "" >> "$LCD_CMDS"
-          echo "#endif // Fix unterminated #elif" >> "$LCD_CMDS"
-          echo "✅ Fixed lcd_init_cmds.h"
+          # Проверяем, есть ли уже #endif в конце
+          if ! tail -5 "$LCD_CMDS" | grep -q "^#endif"; then
+            echo "" >> "$LCD_CMDS"
+            echo "#endif // Fix unterminated #elif" >> "$LCD_CMDS"
+            echo "✅ Added #endif to lcd_init_cmds.h"
+          fi
+        fi
+        
+        # 🔥 ПАТЧ #3: esp_lcd_touch_gt911.h - добавляем pragma для designator order
+        GT911_HEADER="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
+        if [ -f "$GT911_HEADER" ]; then
+          sed -i '1i #pragma GCC diagnostic ignored "-Wdesignated-init"' "$GT911_HEADER"
+          echo "✅ Added pragma to esp_lcd_touch_gt911.h"
         fi
         
         # 2. Заглушаем emoji-шрифты
@@ -91,7 +100,6 @@ jobs:
             base=$(basename "$f" .c)
             echo '#include "cbin_font.h"' > "$f"
             echo "void ${base}_init(void) {}" >> "$f"
-            echo "✅ Stubbed: $(basename "$f")"
           fi
         done
 
@@ -112,13 +120,13 @@ jobs:
         if [ -f "main/CMakeLists.txt" ]; then
           echo "" >> main/CMakeLists.txt
           echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions>)' >> main/CMakeLists.txt
-          echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
+          echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init)' >> main/CMakeLists.txt
           echo "✅ Applied RTTI, Exceptions & bypasses for main"
         fi
 
-        # 6. Глобальные флаги
-        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
-        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
+        # 6. Глобальные флаги (БЕЗ -Wno-error=macro-redefined, так как его нет в GCC)
+        export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
+        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
         
         # 7. Сборка
         echo ">>> Starting idf.py build..."
