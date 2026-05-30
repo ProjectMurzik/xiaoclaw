@@ -85,7 +85,7 @@ jobs:
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
               rm -f "$GT911_H"
-              curl -sS -o "$GT911_H" "https://githubusercontent.com" || echo "⚠️ Failed to restore original"
+              curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
               echo "✅ Restored original esp_lcd_touch_gt911.h"
             fi
           fi
