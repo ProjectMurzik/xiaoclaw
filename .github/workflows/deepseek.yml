@@ -91,6 +91,11 @@ jobs:
           echo "CONFIG_MIMI_SERVER_URL=wss://api.xiaozhi.me:443/v1" >> sdkconfig.defaults
 
           idf.py set-target esp32p4
+
+          # 🔥 Принудительно увеличиваем лимит бутлоадера до 64KB
+          sed -i 's/CONFIG_BOOTLOADER_SIZE=0x2000/CONFIG_BOOTLOADER_SIZE=0x10000/g' sdkconfig 2>/dev/null || \
+            echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig
+
           idf.py reconfigure
 
           # === ПРЯМОЙ ПАТЧ build.ninja ===
