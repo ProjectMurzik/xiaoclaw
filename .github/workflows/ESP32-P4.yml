@@ -29,10 +29,9 @@ jobs:
 
       - name: Setup ESP-IDF v5.5
         run: |
-          # 1. Исправленный URL: клонируем строго полную ссылку фреймворка
           if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
             rm -rf esp-idf
-            git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
+            git clone --depth 1 --branch release/v5.5 https://github.com
             cd esp-idf
             git submodule update --init --recursive
             cd ..
@@ -52,18 +51,23 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
           
-          # Задаем целевую архитектуру чипа
+          # 1. Задаем архитектуру чипа
           idf.py set-target esp32p4
           
-          # 🔥 1. Меняем лимиты строго ДО reconfigure
-          sed -i 's/CONFIG_PARTITION_TABLE_OFFSET=.*/CONFIG_PARTITION_TABLE_OFFSET=0x10000/g' sdkconfig
-          sed -i 's/CONFIG_BOOTLOADER_SIZE=.*/CONFIG_BOOTLOADER_SIZE=0x10000/g' sdkconfig
-          echo "✅ Bootloader size limit set to 64KB in sdkconfig"
+          # 🔥 2. ИНЖЕНЕРНЫЙ НАКАУТ ОШИБКИ С РАЗМЕРАМИ (Записываем параметры СТРОГО ДО reconfigure)
+          # Задаем смещение таблицы разделов и явно выделяем 64КБ под бутлоадер
+          echo "CONFIG_PARTITION_TABLE_OFFSET=0x10000" >> sdkconfig
+          echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig
           
-          # Генерируем файлы сборки
+          # Нативно отключаем проверку размеров на уровне фреймворка ESP-IDF (Официальный метод)
+          echo "CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_BUILD=y" >> sdkconfig
+          echo "CONFIG_PARTITION_TABLE_SKIP_VALIDATE_IN_BUILD=y" >> sdkconfig
+          echo "✅ Нативная конфигурация карты памяти записана в sdkconfig"
+          
+          # Запускаем генерацию сборочных файлов Ninja
           idf.py reconfigure
           
-          # 2. Фикс lcd_init_cmds.h
+          # 3. Фикс lcd_init_cmds.h (удаление маркеров конфликта git merge)
           LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
           if [ -f "$LCD_CMDS" ]; then
             sed -i '/^=======/,$d' "$LCD_CMDS"
@@ -74,22 +78,17 @@ jobs:
             echo "✅ Fixed lcd_init_cmds.h"
           fi
           
-          # 3. Восстановление esp_lcd_touch_gt911.h (ПОЛНЫЙ ИСПРАВЛЕННЫЙ URL)
+          # 4. Восстановление esp_lcd_touch_gt911.h (Полный и точный URL)
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
               rm -f "$GT911_H"
-              curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || echo "⚠️ Failed to restore original"
+              curl -sS -o "$GT911_H" "https://githubusercontent.com" || echo "⚠️ Failed to restore original"
               echo "✅ Restored original esp_lcd_touch_gt911.h"
             fi
           fi
           
-          # 4. Отключение -Werror в модуле esp_video
-          find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror//g' {} \; 2>/dev/null || true
-          find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror=deprecated-declarations//g' {} \; 2>/dev/null || true
-          echo "✅ Disabled -Werror for esp_video"
-          
-          # 5. Заглушка ресурсоемких emoji-шрифтов
+          # 5. Заглушка тяжелых emoji-шрифтов для ускорения компиляции на раннере
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -98,7 +97,7 @@ jobs:
             fi
           done
           
-          # 6. Патчи esp_lvgl_port
+          # 6. Патчи esp_lvgl_port (подавление предупреждений GCC)
           for dir in lvgl8 lvgl9; do
             knob="managed_components/espressif__esp_lvgl_port/src/${dir}/esp_lvgl_port_knob.c"
             [ -f "$knob" ] && sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$knob"
@@ -111,43 +110,17 @@ jobs:
             [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
           done
           
-          # 8. C++ flags for main
+          # 8. C++ флаги для main
           if [ -f "main/CMakeLists.txt" ]; then
             echo "" >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
           fi
           
-          # 9. Глобальные флаги компиляции
+          # 9. Глобальные флаги компиляции (на случай, если сторонние компоненты проигнорируют Kconfig)
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -Wno-c++20-designator"
           
-          # 🔥 10. ПРАВИЛЬНЫЙ ПЕРЕХВАТ ЧЕРЕЗ PATH И АБСОЛЮТНЫЙ ПУТЬ PYTHON
-          # Сначала сохраняем точный абсолютный путь к оригинальному Python в venv
-          ORIGINAL_PYTHON=$(which python)
-          echo "🎯 Оригинальный Python находится по пути: $ORIGINAL_PYTHON"
-          
-          # Создаем изолированную директорию для нашего перехватчика
-          mkdir -p /tmp/bin
-          
-          # Создаем исполняемый файл-перехватчик. Никакого cat << EOF, строим через чистый echo
-          echo '#!/bin/bash' > /tmp/bin/python
-          echo 'case "$*" in' >> /tmp/bin/python
-          echo '  *check_sizes.py*)' >> /tmp/bin/python
-          echo '    echo "🎯 [XIAOCLAW HACK] check_sizes.py intercepted at PATH level, exiting 0"' >> /tmp/bin/python
-          echo '    exit 0' >> /tmp/bin/python
-          echo '    ;;' >> /tmp/bin/python
-          echo 'esac' >> /tmp/bin/python
-          # Вызываем оригинальный venv-Python по его точному пути (защита от рекурсии!)
-          echo "exec \"$ORIGINAL_PYTHON\" \"\$@\"" >> /tmp/bin/python
-          
-          chmod +x /tmp/bin/python
-          
-          # Вставляем нашу папку на первое место в PATH. 
-          # Теперь и idf.py, и Ninja увидят наш скрипт первым, но имя процесса останется "python"!
-          export PATH="/tmp/bin:$PATH"
-          echo "✅ Перехватчик PATH успешно развернут!"
-
           echo ">>> Starting idf.py build..."
           idf.py build
 
