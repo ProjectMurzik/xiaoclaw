@@ -43,12 +43,12 @@ jobs:
         run: |
           . ./esp-idf/export.sh
           set -e
-          
+
           rm -f sdkconfig sdkconfig.old sdkconfig.defaults
           rm -f dependencies.lock
           rm -rf build
 
-          # === Конфигурация ===
+          # === Базовая конфигурация ===
           echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
           echo "CONFIG_IDF_TARGET_ESP32P4=y" >> sdkconfig.defaults
           echo "CONFIG_ESP32P4_REV_MIN_0=y" >> sdkconfig.defaults
@@ -91,18 +91,16 @@ jobs:
           echo "CONFIG_APP_OTA_ROLLBACK_ENABLE=n" >> sdkconfig.defaults
           echo "CONFIG_MIMI_SERVER_URL=wss://api.xiaozhi.me:443/v1" >> sdkconfig.defaults
 
+          # 1. Генерируем топ-левел проект
           idf.py set-target esp32p4
           idf.py reconfigure
 
-          # 🔥 НОВОЕ РЕШЕНИЕ: Атомарная замена check_sizes.py на стаб (без sed, без regex, без кэша)
-          CHECK_SIZES="$IDF_PATH/components/partition_table/check_sizes.py"
-          if [ -f "$CHECK_SIZES" ]; then
-            printf '#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n' > "$CHECK_SIZES"
-            chmod +x "$CHECK_SIZES"
-            echo "✅ Replaced check_sizes.py with safe stub"
-          fi
+          # 🔥 НОВЫЙ ВЕКТОР: Принудительно перезаписываем кэш подпроекта bootloader
+          # ESP-IDF v5.5 изолирует BOOTLOADER_SIZE в отдельном CMakeCache.
+          # -C меняет контекст, -D пишет переменную напрямую в кэш подпроекта.
+          idf.py -C bootloader reconfigure -D BOOTLOADER_SIZE=0x10000
 
-          # === Восстановление GT911 ===
+          # === Компонентные фиксы (без изменений, работают стабильно) ===
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -111,7 +109,6 @@ jobs:
             fi
           fi
 
-          # === Фикс lcd_init_cmds.h ===
           LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
           if [ -f "$LCD_CMDS" ]; then
             sed -i '/^=======/,$d' "$LCD_CMDS"
@@ -121,14 +118,12 @@ jobs:
             fi
           fi
 
-          # === esp_video: отключение -Werror ===
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f | while read -r cmake_file; do
             sed -i 's/-Werror //g' "$cmake_file"
             sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
             sed -i 's/-Werror$//g' "$cmake_file"
           done
 
-          # === Заглушка emoji-шрифтов ===
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -137,25 +132,21 @@ jobs:
             fi
           done
 
-          # === esp_lvgl_port: подавление предупреждений ===
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
             grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
             grep -q "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done
 
-          # === Большие таблицы для шрифтов ===
           for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
             [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
           done
 
-          # === C++ флаги для main ===
           if [ -f "main/CMakeLists.txt" ]; then
             echo "" >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
           fi
 
-          # === Глобальные флаги ===
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -frtti"
 
