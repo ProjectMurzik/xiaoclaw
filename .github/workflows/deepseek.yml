@@ -39,13 +39,12 @@ jobs:
           cd esp-idf
           ./install.sh esp32p4
 
-      # 🔥 НОВЫЙ ХАК: Модифицируем исходники ESP-IDF для обхода ошибки pmu_init()
+      # Патч для pmu_init()
       - name: Patch ESP-IDF to remove pmu_init call
         run: |
           FPGA_OVERRIDE_FILE="esp-idf/components/esp_system/fpga_overrides_clk.c"
           if [ -f "$FPGA_OVERRIDE_FILE" ]; then
             echo "Patching $FPGA_OVERRIDE_FILE to remove pmu_init() call..."
-            # Заменяем строку "pmu_init();" на "/* pmu_init(); // Disabled for CI */"
             sed -i 's/pmu_init();/\/\* pmu_init(); \/\/ Disabled for CI \*\//g' "$FPGA_OVERRIDE_FILE"
             echo "Patch applied successfully."
           else
@@ -60,6 +59,25 @@ jobs:
           rm -f sdkconfig sdkconfig.old sdkconfig.defaults
           rm -f dependencies.lock
           rm -rf build
+
+          # ------------------------------------------------------------
+          # 🔥 ИСПРАВЛЕНИЕ strncpy В agent_loop.c (убираем stringop-truncation)
+          # ------------------------------------------------------------
+          AGENT_LOOP_FILE="main/mimi/agent/agent_loop.c"
+          if [ -f "$AGENT_LOOP_FILE" ]; then
+            echo "Исправляем $AGENT_LOOP_FILE: заменяем strncpy на snprintf..."
+            # Для поля chat_id (размер 95)
+            sed -i 's|strncpy(out\.chat_id, msg\.chat_id, sizeof(out\.chat_id) - 1);|snprintf(out.chat_id, sizeof(out.chat_id), "%s", msg.chat_id);|g' "$AGENT_LOOP_FILE"
+            # Для поля channel (размер 15)
+            sed -i 's|strncpy(out\.channel, msg\.channel, sizeof(out\.channel) - 1);|snprintf(out.channel, sizeof(out.channel), "%s", msg.channel);|g' "$AGENT_LOOP_FILE"
+            # Для status.chat_id
+            sed -i 's|strncpy(status\.chat_id, msg\.chat_id, sizeof(status\.chat_id) - 1);|snprintf(status.chat_id, sizeof(status.chat_id), "%s", msg.chat_id);|g' "$AGENT_LOOP_FILE"
+            echo "Исправление завершено."
+          else
+            echo "Ошибка: файл $AGENT_LOOP_FILE не найден!"
+            exit 1
+          fi
+          # ------------------------------------------------------------
 
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
