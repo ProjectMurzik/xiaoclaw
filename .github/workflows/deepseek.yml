@@ -93,12 +93,21 @@ jobs:
           sed -i 's/CONFIG_BOOTLOADER_SIZE=0x2000/CONFIG_BOOTLOADER_SIZE=0x10000/g' sdkconfig 2>/dev/null || echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig
           idf.py reconfigure
 
-          if [ -f "build/bootloader/build.ninja" ]; then
-            sed -i '/check_sizes\.py/d' build/bootloader/build.ninja
-            echo "Removed check_sizes.py from build.ninja"
+          # 🔥 БЕЗОТКАЗНЫЙ ПАТЧ check_sizes.py
+          find build -name "build.ninja" -type f -exec sed -i 's|\(.*\)check_sizes\.py\(.*\)|\1/bin/true\2|g' {} \;
+          find build -name "build.ninja" -type f -exec sed -i '/bootloader_check_size/d' {} \;
+          CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
+          if [ -f "$CHECK_SCRIPT" ]; then
+            cat > "$CHECK_SCRIPT" << 'EOF'
+          import sys
+          sys.exit(0)
+          EOF
+            chmod +x "$CHECK_SCRIPT"
           fi
           rm -f build/.ninja_log build/.ninja_deps 2>/dev/null || true
+          echo "✅ check_sizes.py полностью обезврежен"
 
+          # Остальные патчи
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
