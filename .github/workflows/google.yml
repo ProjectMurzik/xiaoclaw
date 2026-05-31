@@ -113,6 +113,14 @@ jobs:
             fi
           fi
 
+          # Инжектируем недостающий макрос прямо в исходный C++ код платы Waveshare,
+          # чтобы полностью обойти проблему его удаления в новых версиях драйвера Espressif
+          BOARD_CC="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/esp32-p4-wifi6-touch-lcd.cc"
+          if [ -f "$BOARD_CC" ]; then
+            sed -i '1i #ifndef ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG\n#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG() { .dev_addr = 0x5D, .on_color_trans_done = NULL, .user_ctx = NULL, .control_phase_bytes = 1, .dc_bit_offset = 0, .lcd_cmd_bits = 16, .lcd_param_bits = 0, .flags = { .dc_low_on_data = 0, .disable_control_phase = 1 } }\n#endif' "$BOARD_CC"
+            echo "✅ Missing GT911 config macro injected into board source file"
+          fi
+
           LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
           if [ -f "$LCD_CMDS" ]; then
             sed -i '/^=======/,$d' "$LCD_CMDS"
@@ -146,14 +154,14 @@ jobs:
             [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
           done
 
-          # === 9. C++ флаги для main (Синтаксическая опечатка GCC полностью вырезана) ===
+          # === 9. C++ флаги для main ===
           if [ -f "main/CMakeLists.txt" ]; then
             echo "" >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init)' >> main/CMakeLists.txt
           fi
 
-          # === 10. Глобальные флаги компиляции для тулчейна GCC (Синтаксическая опечатка вычищена) ===
+          # === 10. Глобальные флаги компиляции для тулчейна GCC ===
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -fpermissive -frtti"
 
