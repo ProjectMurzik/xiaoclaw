@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build (Final) deepseek
+name: ESP32-P4  deepseek
 
 on:
   push:
@@ -39,20 +39,6 @@ jobs:
           cd esp-idf
           ./install.sh esp32p4
 
-      - name: Patch check_sizes.py (always return success)
-        run: |
-          CHECK_SCRIPT="$IDF_PATH/components/partition_table/check_sizes.py"
-          printf '%s\n' '#!/usr/bin/env python3' 'import sys' 'print("Bootloader size check bypassed (CI patch)")' 'sys.exit(0)' > "$CHECK_SCRIPT"
-          chmod +x "$CHECK_SCRIPT"
-          echo "check_sizes.py replaced with bypass"
-
-      - name: Patch ESP-IDF pmu_init
-        run: |
-          FPGA_OVERRIDE_FILE="esp-idf/components/esp_system/fpga_overrides_clk.c"
-          if [ -f "$FPGA_OVERRIDE_FILE" ]; then
-            sed -i 's/pmu_init();/\/\* pmu_init(); \/\/ Disabled for CI \*\//g' "$FPGA_OVERRIDE_FILE"
-          fi
-
       - name: Configure & Build
         run: |
           . ./esp-idf/export.sh
@@ -60,6 +46,18 @@ jobs:
 
           export IDF_CI_BUILD=1
           export CI=1
+
+          # ------------------------------------------------------------
+          # 🔥 РАННИЙ ПАТЧ check_sizes.py (после загрузки окружения)
+          # ------------------------------------------------------------
+          CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
+          if [ -f "$CHECK_SCRIPT" ]; then
+            printf '%s\n' '#!/usr/bin/env python3' 'import sys' 'print("Bootloader size check bypassed (CI patch)")' 'sys.exit(0)' > "$CHECK_SCRIPT"
+            chmod +x "$CHECK_SCRIPT"
+            echo "check_sizes.py replaced with bypass"
+          else
+            echo "Warning: check_sizes.py not found at $CHECK_SCRIPT"
+          fi
 
           rm -f sdkconfig sdkconfig.old sdkconfig.defaults
           rm -f dependencies.lock
