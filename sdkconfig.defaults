@@ -10,20 +10,11 @@ CONFIG_SPIRAM_TYPE_AUTO=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_MALLOC=y
 
-# Partition Table
-# ВАЖНО: Для ESP32-P4 бутлоадер всегда по смещению 0x0
-# Таблица разделов должна быть сразу после бутлоадера
+# Partition Table (64KB bootloader)
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
-# Таблица разделов начинается с 0x8000 (32KB) — достаточно места для бутлоадера
-CONFIG_PARTITION_TABLE_OFFSET=0x8000
+CONFIG_PARTITION_TABLE_OFFSET=0x10000
 CONFIG_PARTITION_TABLE_MD5=y
-
-# Bootloader configuration
-# Явно указываем, что бутлоадер в начале flash
-CONFIG_BOOTLOADER_OFFSET_IN_FLASH=0x0
-# Максимальный размер бутлоадера (ESP32-P4 может использовать больше 0x2000)
-CONFIG_BOOTLOADER_SIZE=0x8000
 
 # Board
 CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y
