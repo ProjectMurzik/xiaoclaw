@@ -93,7 +93,7 @@ jobs:
         echo "✅ sdkconfig.defaults created with all required settings"
 
         idf.py set-target esp32p4
-        idf.py defconfig
+        
         idf.py reconfigure
 
         # 🔥 2. СИНТАКСИЧЕСКИ ИДЕАЛЬНЫЙ ПАТЧ NINJA (Через безопасный цикл for, без while read)
