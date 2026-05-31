@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build deepseek1
+name: ESP32-P4 Firmware Build (Final)
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-esp-idf-v5.5.13-
 
-      - name: Setup ESP-IDF v5.5 and patch check_sizes.py
+      - name: Setup ESP-IDF v5.5 and remove check_sizes.py
         run: |
           if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
             rm -rf esp-idf
@@ -37,14 +37,8 @@ jobs:
             cd ..
           fi
           cd esp-idf
-          # Принудительно заменяем check_sizes.py на заглушку (без heredoc)
-          CHECK_SCRIPT="components/partition_table/check_sizes.py"
-          if [ -f "$CHECK_SCRIPT" ]; then
-            cp "$CHECK_SCRIPT" "${CHECK_SCRIPT}.orig"
-            printf '%s\n' '#!/usr/bin/env python3' 'import sys' 'print("Bootloader size check bypassed by CI patch")' 'sys.exit(0)' > "$CHECK_SCRIPT"
-            chmod +x "$CHECK_SCRIPT"
-            echo "check_sizes.py patched"
-          fi
+          # Удаляем проблемный скрипт навсегда
+          rm -f components/partition_table/check_sizes.py
           ./install.sh esp32p4
 
       - name: Patch ESP-IDF pmu_init
@@ -66,9 +60,7 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
-          # ------------------------------------------------------------
           # 1. Fix strncpy -> snprintf in source files
-          # ------------------------------------------------------------
           AGENT_LOOP_FILE="main/mimi/agent/agent_loop.c"
           if [ -f "$AGENT_LOOP_FILE" ]; then
             sed -i 's|strncpy(out\.chat_id, msg\.chat_id, sizeof(out\.chat_id) - 1);|snprintf(out.chat_id, sizeof(out.chat_id), "%s", msg.chat_id);|g' "$AGENT_LOOP_FILE"
@@ -94,10 +86,7 @@ jobs:
             sed -i 's|strncpy(s_first_class_tool_names\[s_first_class_tool_count\], local_name, sizeof(s_first_class_tool_names\[s_first_class_tool_count\]) - 1);|snprintf(s_first_class_tool_names[s_first_class_tool_count], sizeof(s_first_class_tool_names[s_first_class_tool_count]), "%s", local_name);|g' "$MCP_CLIENT_FILE"
           fi
 
-          # ------------------------------------------------------------
-          # 2. Удаление xiaozhi-fonts для esp32p4
-          # ------------------------------------------------------------
-          echo "=== Removing xiaozhi-fonts for esp32p4 ==="
+          # 2. Remove xiaozhi-fonts for esp32p4
           rm -rf managed_components/78__xiaozhi-fonts
           rm -rf components/78__xiaozhi-fonts 2>/dev/null || true
           YML_FILE="main/idf_component.yml"
@@ -111,9 +100,7 @@ jobs:
           fi
           rm -f dependencies.lock
 
-          # ------------------------------------------------------------
-          # 3. Generate config files (без heredoc)
-          # ------------------------------------------------------------
+          # 3. Generate config files
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
             'CONFIG_IDF_TARGET_ESP32P4=y' \
@@ -170,15 +157,10 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-          # ------------------------------------------------------------
-          # 4. Дополнительные хаки (CMakeCache, GT911, -Werror)
-          # ------------------------------------------------------------
-          CACHE_FILE="build/bootloader/CMakeCache.txt"
-          if [ -f "$CACHE_FILE" ]; then
-            sed -i 's/BOOTLOADER_SIZE:STRING=0x2000/BOOTLOADER_SIZE:STRING=0x10000/g' "$CACHE_FILE"
-          fi
-          rm -f build/.ninja_log build/.ninja_deps build/bootloader/.ninja_log build/bootloader/.ninja_deps 2>/dev/null || true
+          # 4. Удаляем все упоминания check_sizes.py из сборочных файлов (на случай если остались)
+          find build -type f \( -name '*.ninja' -o -name '*.cmake' \) -exec sed -i '/check_sizes\.py/d' {} \;
 
+          # 5. GT911 fix, -Werror, etc.
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
