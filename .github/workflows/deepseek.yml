@@ -63,7 +63,6 @@ jobs:
           # 🔥 ГЛОБАЛЬНОЕ ОТКЛЮЧЕНИЕ stringop-truncation В CMakeLists.txt
           # ------------------------------------------------------------
           if [ -f "CMakeLists.txt" ]; then
-            # Добавляем опцию, если её ещё нет
             if ! grep -q "Wno-error=stringop-truncation" CMakeLists.txt; then
               echo "Добавляем -Wno-error=stringop-truncation в CMakeLists.txt"
               sed -i '1i add_compile_options(-Wno-error=stringop-truncation)\n' CMakeLists.txt
@@ -99,6 +98,23 @@ jobs:
             echo "Исправление $WEB_SEARCH_FILE завершено."
           else
             echo "Ошибка: файл $WEB_SEARCH_FILE не найден!"
+            exit 1
+          fi
+
+          # ------------------------------------------------------------
+          # 🔥 ИСПРАВЛЕНИЕ tool_mcp_client.c (strncpy -> snprintf)
+          # ------------------------------------------------------------
+          MCP_CLIENT_FILE="main/mimi/tools/tool_mcp_client.c"
+          if [ -f "$MCP_CLIENT_FILE" ]; then
+            echo "Исправляем $MCP_CLIENT_FILE: заменяем strncpy на snprintf..."
+            sed -i 's|strncpy(cfg->name, line + 3, sizeof(cfg->name) - 1);|snprintf(cfg->name, sizeof(cfg->name), "%s", line + 3);|g' "$MCP_CLIENT_FILE"
+            sed -i 's|strncpy(cfg->endpoint, value, sizeof(cfg->endpoint) - 1);|snprintf(cfg->endpoint, sizeof(cfg->endpoint), "%s", value);|g' "$MCP_CLIENT_FILE"
+            sed -i 's|strncpy(cfg->host, value, sizeof(cfg->host) - 1);|snprintf(cfg->host, sizeof(cfg->host), "%s", value);|g' "$MCP_CLIENT_FILE"
+            sed -i 's|strncpy(s_local_names\[count\], local_name, sizeof(s_local_names\[count\]) - 1);|snprintf(s_local_names[count], sizeof(s_local_names[count]), "%s", local_name);|g' "$MCP_CLIENT_FILE"
+            sed -i 's|strncpy(s_first_class_tool_names\[s_first_class_tool_count\], local_name, sizeof(s_first_class_tool_names\[s_first_class_tool_count\]) - 1);|snprintf(s_first_class_tool_names[s_first_class_tool_count], sizeof(s_first_class_tool_names[s_first_class_tool_count]), "%s", local_name);|g' "$MCP_CLIENT_FILE"
+            echo "Исправление $MCP_CLIENT_FILE завершено."
+          else
+            echo "Ошибка: файл $MCP_CLIENT_FILE не найден!"
             exit 1
           fi
 
@@ -161,9 +177,6 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-          # ------------------------------------------------------------
-          # ДОПОЛНИТЕЛЬНЫЕ ПЕРЕМЕННЫЕ И ХАКИ
-          # ------------------------------------------------------------
           export IDF_GDB_BUILD=1
           export IDF_ENV_FPGA=1
           export CFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
