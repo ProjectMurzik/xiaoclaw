@@ -94,21 +94,17 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-          # 🔥 DEFINITIVE FIX: Double bypass for check_sizes.py
-          if [ -f build/bootloader/build.ninja ]; then
-            sed -i '/check_sizes\.py/ s/0x2000/0x10000/g' build/bootloader/build.ninja
-            echo "✅ Patched build.ninja bootloader size limit"
+          # 🔥 DEFINITIVE FIX: Direct injection into bootloader subproject CMakeCache
+          # This is the source of truth for BOOTLOADER_SIZE variable
+          CACHE_FILE="build/bootloader/CMakeCache.txt"
+          if [ -f "$CACHE_FILE" ]; then
+            sed -i 's/BOOTLOADER_SIZE:STRING=0x2000/BOOTLOADER_SIZE:STRING=0x10000/g' "$CACHE_FILE"
+            echo "✅ Injected BOOTLOADER_SIZE=0x10000 into bootloader CMakeCache"
           fi
-          if [ -f "${IDF_PATH}/components/partition_table/check_sizes.py" ]; then
-            echo "import sys" > "${IDF_PATH}/components/partition_table/check_sizes.py"
-            echo "sys.exit(0)" >> "${IDF_PATH}/components/partition_table/check_sizes.py"
-            chmod +x "${IDF_PATH}/components/partition_table/check_sizes.py"
-            echo "✅ Replaced check_sizes.py with stub"
-          fi
-          rm -rf build/bootloader/esp-idf/partition_table/__pycache__ 2>/dev/null || true
+          # Clear Ninja dependency cache to force re-reading rules
           rm -f build/.ninja_log build/.ninja_deps build/bootloader/.ninja_log build/bootloader/.ninja_deps 2>/dev/null || true
 
-          # Заглушка emoji-шрифтов
+          # Заглушка emoji-шрифтов (безопасный тип возврата для LVGL v9)
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
