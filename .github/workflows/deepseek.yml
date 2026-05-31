@@ -39,26 +39,11 @@ jobs:
           cd esp-idf
           ./install.sh esp32p4
 
-      # Патч pmu_init
       - name: Patch ESP-IDF pmu_init
         run: |
           FPGA_OVERRIDE_FILE="esp-idf/components/esp_system/fpga_overrides_clk.c"
           if [ -f "$FPGA_OVERRIDE_FILE" ]; then
             sed -i 's/pmu_init();/\/\* pmu_init(); \/\/ Disabled for CI \*\//g' "$FPGA_OVERRIDE_FILE"
-          fi
-
-      # Отключаем xiaozhi-fonts для ESP32-P4
-      - name: Disable xiaozhi-fonts for esp32p4
-        run: |
-          YML_FILE="main/idf_component.yml"
-          if [ -f "$YML_FILE" ]; then
-            # Проверяем, есть ли уже правило исключения
-            if ! grep -A2 "78/xiaozhi-fonts" "$YML_FILE" | grep -q "target not in \[esp32p4\]"; then
-              # Добавляем правило после строки с версией
-              sed -i '/78\/xiaozhi-fonts:/,/version:/ {
-                s/version: ~1.6.0/version: ~1.6.0\n    rules:\n      - if: target not in [esp32p4]/
-              }' "$YML_FILE"
-            fi
           fi
 
       - name: Configure & Build
@@ -102,7 +87,31 @@ jobs:
           fi
 
           # ------------------------------------------------------------
-          # 2. Generate config files
+          # 2. 🔥 УДАЛЕНИЕ ПРОБЛЕМНОГО КОМПОНЕНТА xiaozhi-fonts
+          # ------------------------------------------------------------
+          echo "=== Удаляем проблемный компонент xiaozhi-fonts ==="
+          rm -rf managed_components/78__xiaozhi-fonts
+          rm -rf components/78__xiaozhi-fonts 2>/dev/null || true
+          YML_FILE="main/idf_component.yml"
+          if [ -f "$YML_FILE" ]; then
+            # Удаляем старые строки с этим компонентом
+            sed -i '/78\/xiaozhi-fonts:/,/[a-zA-Z]/ {
+              /78\/xiaozhi-fonts:/d
+              /version:/d
+              /rules:/d
+              /- if:/d
+            }' "$YML_FILE"
+            # Добавляем новое правило с исключением для esp32p4
+            echo "" >> "$YML_FILE"
+            echo "  78/xiaozhi-fonts:" >> "$YML_FILE"
+            echo "    version: \"~1.6.0\"" >> "$YML_FILE"
+            echo "    rules:" >> "$YML_FILE"
+            echo "      - if: target not in [esp32p4]" >> "$YML_FILE"
+          fi
+          rm -f dependencies.lock
+
+          # ------------------------------------------------------------
+          # 3. Generate config files
           # ------------------------------------------------------------
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
@@ -161,7 +170,7 @@ jobs:
           idf.py reconfigure
 
           # ------------------------------------------------------------
-          # 3. Hacks for bootloader size and build flags
+          # 4. Hacks for bootloader size and build flags
           # ------------------------------------------------------------
           CACHE_FILE="build/bootloader/CMakeCache.txt"
           if [ -f "$CACHE_FILE" ]; then
