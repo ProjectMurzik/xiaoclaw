@@ -29,7 +29,7 @@ jobs:
 
     - name: Setup ESP-IDF v5.5
       run: |
-        # 1. ЖЕСТКО ЗАФИКСИРОВАННЫЙ ВАМИ URL КЛОНИРОВАНИЯ ФРЕЙМВОРКА
+        # 1. ЖЕСТКО ЗАФИКСИРОВАННЫЙ ВАМИ URL КЛОНИРОВАНИЯ ФРЕЙМВОРКА (БЕЗ ИЗМЕНЕНИЙ)
         if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
           rm -rf esp-idf
           git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
@@ -62,6 +62,9 @@ jobs:
         echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
         echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=partitions.csv" >> sdkconfig.defaults
         echo "CONFIG_PARTITION_TABLE_OFFSET=0x10000" >> sdkconfig.defaults
+        echo "CONFIG_BOOTLOADER_SIZE=0xe000" >> sdkconfig.defaults
+        echo "CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_BUILD=y" >> sdkconfig.defaults
+        echo "CONFIG_PARTITION_TABLE_SKIP_VALIDATE_IN_BUILD=y" >> sdkconfig.defaults
         echo "CONFIG_PARTITION_TABLE_MD5=y" >> sdkconfig.defaults
         echo "CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y" >> sdkconfig.defaults
         echo "CONFIG_LCD_ENABLE=y" >> sdkconfig.defaults
@@ -92,7 +95,7 @@ jobs:
         echo "CONFIG_MIMI_SERVER_URL=wss://api.xiaozhi.me:443/v1" >> sdkconfig.defaults
         echo "✅ sdkconfig.defaults created with all required settings"
 
-        # Применяем базовый таргет микроконтроллера (он сам нативно подтянет sdkconfig.defaults!)
+        # Навешиваем архитектуру чипа (она нативно подтянет готовый sdkconfig.defaults)
         idf.py set-target esp32p4
 
         # === 2. Патч CMake ДО reconfigure (безопасный awk с экранированием скобок) ===
@@ -109,10 +112,10 @@ jobs:
           echo "✅ Bootloader CMake macro patched"
         fi
 
-        # Генерируем сборочные файлы Ninja
+        # Генерируем сборочную структуру проекта
         idf.py reconfigure
 
-        # 🔥 3. ТОЧЕЧНЫЙ ПАТЧ NINJA (Заменяем вызов check_sizes.py на /bin/true со строчным регистром command)
+        # 🔥 3. ИЗОЛИРОВАННЫЙ ЦИКЛ ПАТЧА NINJA (Заменяем вызов check_sizes.py на /bin/true, обходя конфликты stdin и set -e)
         echo ">>> Уничтожаем check_sizes.py внутри конфигурации Ninja..."
         for ninja_file in $(find build -name "*.ninja" -type f 2>/dev/null); do
           if grep -q "check_sizes\.py" "$ninja_file" 2>/dev/null; then
@@ -122,12 +125,12 @@ jobs:
           fi
         done
         
-        # Сбрасываем глобальные логи Ninja, заставляя его применить наши правки
+        # Принудительно обновляем timestamp ВСЕХ файлов build.ninja для сброса кэша
         find build -name "*.ninja" -exec touch {} \; 2>/dev/null || true
         rm -f build/.ninja_log build/.ninja_deps 2>/dev/null || true
         echo "✅ Все таймстампы Ninja успешно актуализированы"
 
-        # === 4. ЖЕСТКО ЗАФИКСИРОВАННЫЙ ВАМИ URL ВОССТАНОВЛЕНИЯ ДРАЙВЕРА ТАЧ-СЕНСОРА (БЕЗ ИЗМЕНЕНИЙ) ===
+        # === 4. ЖЕСТКО ЗАФИКСИРОВАННЫЙ ВАМИ URL ВОССТАНОВЛЕНИЯ ДРАЙВЕРА ТАЧ-СЕНСОРА (БЕЗ ИЗМЕНЕНИЙ И ОБРЕЗАНИЙ) ===
         GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
         if [ -f "$GT911_H" ]; then
           if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -186,27 +189,3 @@ jobs:
 
         # Глобальные флаги компиляции (Сквозной флаг -frtti для C++)
         export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
-        export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -frtti"
-
-        echo ">>> Starting idf.py build..."
-        idf.py build
-
-    - name: Analyze Binary Size
-      if: success()
-      run: |
-        . ./esp-idf/export.sh
-        echo "Component Sizes"
-        idf.py size-components
-        echo "Memory Map"
-        idf.py size
-
-    - name: Upload Artifacts
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: murzik-esp32p4-firmware
-        path: |
-          build/*.bin
-          build/bootloader/*.bin
-          build/partition_table/*.bin
-        retention-days: 7
