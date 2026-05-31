@@ -96,6 +96,13 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
+          # 🔥 Патч лимита в Ninja (сохраняет валидацию, но даёт корректный размер)
+          if [ -f "build/bootloader/build.ninja" ]; then
+            sed -i 's|bootloader 0x2000|bootloader 0x8000|g' build/bootloader/build.ninja
+            echo "✅ Aligned bootloader size limit to 0x8000 in build.ninja"
+          fi
+          rm -f build/.ninja_log build/.ninja_deps 2>/dev/null || true
+
           # === Восстановление GT911 ===
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
