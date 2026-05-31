@@ -1,0 +1,139 @@
+name: ESP32-P4 Firmware Build (Official Action)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      # ------------------------------------------------------------
+      # 1. Fix unsafe strncpy in source files
+      # ------------------------------------------------------------
+      - name: Fix unsafe strncpy in source files
+        run: |
+          AGENT_LOOP_FILE="main/mimi/agent/agent_loop.c"
+          if [ -f "$AGENT_LOOP_FILE" ]; then
+            sed -i 's|strncpy(out\.chat_id, msg\.chat_id, sizeof(out\.chat_id) - 1);|snprintf(out.chat_id, sizeof(out.chat_id), "%s", msg.chat_id);|g' "$AGENT_LOOP_FILE"
+            sed -i 's|strncpy(out\.channel, msg\.channel, sizeof(out\.channel) - 1);|snprintf(out.channel, sizeof(out.channel), "%s", msg.channel);|g' "$AGENT_LOOP_FILE"
+            sed -i 's|strncpy(status\.chat_id, msg\.chat_id, sizeof(status\.chat_id) - 1);|snprintf(status.chat_id, sizeof(status.chat_id), "%s", msg.chat_id);|g' "$AGENT_LOOP_FILE"
+            sed -i 's|strncpy(status\.channel, msg\.channel, sizeof(status\.channel) - 1);|snprintf(status.channel, sizeof(status.channel), "%s", msg.channel);|g' "$AGENT_LOOP_FILE"
+          fi
+          WEB_SEARCH_FILE="main/mimi/tools/tool_web_search.c"
+          if [ -f "$WEB_SEARCH_FILE" ]; then
+            sed -i 's|strncpy(s_brave_key, MIMI_SECRET_SEARCH_KEY, sizeof(s_brave_key) - 1);|snprintf(s_brave_key, sizeof(s_brave_key), "%s", MIMI_SECRET_SEARCH_KEY);|g' "$WEB_SEARCH_FILE"
+            sed -i 's|strncpy(s_tavily_key, MIMI_SECRET_TAVILY_KEY, sizeof(s_tavily_key) - 1);|snprintf(s_tavily_key, sizeof(s_tavily_key), "%s", MIMI_SECRET_TAVILY_KEY);|g' "$WEB_SEARCH_FILE"
+            sed -i 's|strncpy(s_brave_key, tmp, sizeof(s_brave_key) - 1);|snprintf(s_brave_key, sizeof(s_brave_key), "%s", tmp);|g' "$WEB_SEARCH_FILE"
+            sed -i 's|strncpy(s_tavily_key, tmp, sizeof(s_tavily_key) - 1);|snprintf(s_tavily_key, sizeof(s_tavily_key), "%s", tmp);|g' "$WEB_SEARCH_FILE"
+          fi
+          MCP_CLIENT_FILE="main/mimi/tools/tool_mcp_client.c"
+          if [ -f "$MCP_CLIENT_FILE" ]; then
+            sed -i 's|strncpy(cfg->name, line + 3, sizeof(cfg->name) - 1);|snprintf(cfg->name, sizeof(cfg->name), "%s", line + 3);|g' "$MCP_CLIENT_FILE"
+            sed -i 's|strncpy(cfg->endpoint, value, sizeof(cfg->endpoint) - 1);|snprintf(cfg->endpoint, sizeof(cfg->endpoint), "%s", value);|g' "$MCP_CLIENT_FILE"
+            sed -i 's|strncpy(cfg->host, value, sizeof(cfg->host) - 1);|snprintf(cfg->host, sizeof(cfg->host), "%s", value);|g' "$MCP_CLIENT_FILE"
+            sed -i 's|strncpy(s_local_names\[count\], local_name, sizeof(s_local_names\[count\]) - 1);|snprintf(s_local_names[count], sizeof(s_local_names[count]), "%s", local_name);|g' "$MCP_CLIENT_FILE"
+            sed -i 's|strncpy(s_first_class_tool_names\[s_first_class_tool_count\], local_name, sizeof(s_first_class_tool_names\[s_first_class_tool_count\]) - 1);|snprintf(s_first_class_tool_names[s_first_class_tool_count], sizeof(s_first_class_tool_names[s_first_class_tool_count]), "%s", local_name);|g' "$MCP_CLIENT_FILE"
+          fi
+
+      # ------------------------------------------------------------
+      # 2. Exclude xiaozhi-fonts for ESP32-P4
+      # ------------------------------------------------------------
+      - name: Exclude xiaozhi-fonts for esp32p4
+        run: |
+          YML_FILE="main/idf_component.yml"
+          if [ -f "$YML_FILE" ]; then
+            sed -i '/78\/xiaozhi-fonts:/,/rules:/d' "$YML_FILE"
+            echo "" >> "$YML_FILE"
+            echo "  78/xiaozhi-fonts:" >> "$YML_FILE"
+            echo "    version: \"~1.6.0\"" >> "$YML_FILE"
+            echo "    rules:" >> "$YML_FILE"
+            echo "      - if: target not in [esp32p4]" >> "$YML_FILE"
+          fi
+          rm -f dependencies.lock
+
+      # ------------------------------------------------------------
+      # 3. Official ESP-IDF CI Action (without heredoc)
+      # ------------------------------------------------------------
+      - name: Build firmware with esp-idf-ci-action
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5
+          target: esp32p4
+          path: .
+          command: |
+            printf '%s\n' \
+              'CONFIG_IDF_TARGET="esp32p4"' \
+              'CONFIG_IDF_TARGET_ESP32P4=y' \
+              'CONFIG_ESP32P4_REV_MIN_0=y' \
+              'CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y' \
+              'CONFIG_SPIRAM=y' \
+              'CONFIG_SPIRAM_TYPE_AUTO=y' \
+              'CONFIG_SPIRAM_SPEED_80M=y' \
+              'CONFIG_SPIRAM_USE_MALLOC=y' \
+              'CONFIG_PARTITION_TABLE_CUSTOM=y' \
+              'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"' \
+              'CONFIG_PARTITION_TABLE_OFFSET=0x10000' \
+              'CONFIG_PARTITION_TABLE_MD5=y' \
+              'CONFIG_BOOTLOADER_SIZE=0x10000' \
+              'CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y' \
+              'CONFIG_LCD_ENABLE=y' \
+              'CONFIG_LCD_MIPI_DSI=y' \
+              'CONFIG_LCD_MIPI_DSI_PHY_DUAL_LANE=y' \
+              'CONFIG_LVGL_ENABLE=y' \
+              'CONFIG_LVGL_COLOR_DEPTH=16' \
+              'CONFIG_LVGL_DRAW_BUF_SIZE=200000' \
+              'CONFIG_LVGL_MEM_POOL_INCLUDE_SPIRAM_HEAP=y' \
+              'CONFIG_LVGL_USE_IMGFONT=n' \
+              'CONFIG_LV_FONT_FMT_TXT_LARGE=y' \
+              'CONFIG_ESP_I2S_ENABLE=y' \
+              'CONFIG_USE_AUDIO_PROCESSOR=y' \
+              'CONFIG_CAMERA_ENABLE=n' \
+              'CONFIG_ESP_VIDEO_ENABLE=n' \
+              'CONFIG_ESP_SR_ENABLE=n' \
+              'CONFIG_LANGUAGE_EN_US=y' \
+              'CONFIG_FLASH_DEFAULT_ASSETS=n' \
+              'CONFIG_COMPILER_OPTIMIZATION_PERF=y' \
+              'CONFIG_COMPILER_WARNINGS_AS_ERRORS=n' \
+              'CONFIG_COMPILER_CXX_RTTI=y' \
+              'CONFIG_COMPILER_CXX_EXCEPTIONS=y' \
+              'CONFIG_COMPILER_DISABLE_GCC8_WARNINGS=y' \
+              'CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y' \
+              'CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y' \
+              'CONFIG_ENABLE_OTA=n' \
+              'CONFIG_APP_OTA_ROLLBACK_ENABLE=n' \
+              'CONFIG_MIMI_SERVER_URL="wss://api.xiaozhi.me:443/v1"' \
+              'CONFIG_IDF_ENV_FPGA=y' \
+              > sdkconfig.defaults
+            printf '%s\n' \
+              'nvs,data,nvs,,0x6000,' \
+              'phy_init,data,phy,,0x1000,' \
+              'factory,app,factory,,0x500000,' \
+              'ota_0,app,ota_0,,0x500000,' \
+              'ota_1,app,ota_1,,0x500000,' \
+              'storage,data,fat,,0xA00000,' \
+              > partitions.csv
+            idf.py set-target esp32p4
+            idf.py build
+
+      # ------------------------------------------------------------
+      # 4. Upload artifacts
+      # ------------------------------------------------------------
+      - name: Upload firmware artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaoclaw-esp32p4-firmware
+          path: |
+            build/*.bin
+            build/bootloader/*.bin
+            build/partition_table/*.bin
+          retention-days: 7
