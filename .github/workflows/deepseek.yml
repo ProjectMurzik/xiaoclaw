@@ -39,11 +39,26 @@ jobs:
           cd esp-idf
           ./install.sh esp32p4
 
+      # Патч pmu_init
       - name: Patch ESP-IDF pmu_init
         run: |
           FPGA_OVERRIDE_FILE="esp-idf/components/esp_system/fpga_overrides_clk.c"
           if [ -f "$FPGA_OVERRIDE_FILE" ]; then
             sed -i 's/pmu_init();/\/\* pmu_init(); \/\/ Disabled for CI \*\//g' "$FPGA_OVERRIDE_FILE"
+          fi
+
+      # Отключаем xiaozhi-fonts для ESP32-P4
+      - name: Disable xiaozhi-fonts for esp32p4
+        run: |
+          YML_FILE="main/idf_component.yml"
+          if [ -f "$YML_FILE" ]; then
+            # Проверяем, есть ли уже правило исключения
+            if ! grep -A2 "78/xiaozhi-fonts" "$YML_FILE" | grep -q "target not in \[esp32p4\]"; then
+              # Добавляем правило после строки с версией
+              sed -i '/78\/xiaozhi-fonts:/,/version:/ {
+                s/version: ~1.6.0/version: ~1.6.0\n    rules:\n      - if: target not in [esp32p4]/
+              }' "$YML_FILE"
+            fi
           fi
 
       - name: Configure & Build
@@ -87,22 +102,7 @@ jobs:
           fi
 
           # ------------------------------------------------------------
-          # 2. Simplified emoji fonts fix (without complex heredoc)
-          # ------------------------------------------------------------
-          for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
-            if [ -f "$f" ]; then
-              base=$(basename "$f" .c)
-              echo '#include "cbin_font.h"' > "$f"
-              echo '#ifndef LV_FONT_T_DEFINED' >> "$f"
-              echo 'typedef struct _lv_font_t lv_font_t;' >> "$f"
-              echo '#define LV_FONT_T_DEFINED' >> "$f"
-              echo '#endif' >> "$f"
-              echo "lv_font_t* ${base}_init(void) { return NULL; }" >> "$f"
-            fi
-          done
-
-          # ------------------------------------------------------------
-          # 3. Generate config files using printf (no heredoc)
+          # 2. Generate config files
           # ------------------------------------------------------------
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
@@ -161,7 +161,7 @@ jobs:
           idf.py reconfigure
 
           # ------------------------------------------------------------
-          # 4. Additional hacks (CMakeCache, check_sizes, GT911, etc.)
+          # 3. Hacks for bootloader size and build flags
           # ------------------------------------------------------------
           CACHE_FILE="build/bootloader/CMakeCache.txt"
           if [ -f "$CACHE_FILE" ]; then
@@ -206,8 +206,8 @@ jobs:
             fi
           fi
 
-          export CFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
-          export CXXFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -fpermissive -frtti"
+          export CFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -DLV_USE_IMGFONT=1"
+          export CXXFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -fpermissive -frtti -DLV_USE_IMGFONT=1"
 
           find build -name "CMakeCache.txt" 2>/dev/null | xargs sed -i 's/-Werror//g' 2>/dev/null || true
           find build -name "flags.make" 2>/dev/null | xargs sed -i 's/-Werror//g' 2>/dev/null || true
