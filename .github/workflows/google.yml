@@ -32,7 +32,7 @@ jobs:
         # 1. ЖЕСТКО ЗАФИКСИРОВАННЫЙ ВАМИ URL КЛОНИРОВАНИЯ ФРЕЙМВОРКА
         if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
           rm -rf esp-idf
-          git clone --depth 1 --branch release/v5.5 https://github.com
+          git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
           cd esp-idf
           git submodule update --init --recursive
           cd ..
@@ -132,7 +132,7 @@ jobs:
         if [ -f "$GT911_H" ]; then
           if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
             rm -f "$GT911_H"
-            curl -sS -o "$GT911_H" "https://githubusercontent.com" || echo "⚠️ Failed to restore original"
+            curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || echo "⚠️ Failed to restore original"
             echo "✅ Драйвер тача успешно восстановлен"
           fi
         fi
