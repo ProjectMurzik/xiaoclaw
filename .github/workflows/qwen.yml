@@ -36,6 +36,16 @@ jobs:
             git submodule update --init --recursive
             cd ..
           fi
+
+          # 🔥 НОВЫЙ ВЕКТОР: Патч дефолта ДО установки окружения и генерации кэшей
+          ESP_CMAKE="esp-idf/components/esptool_py/CMakeLists.txt"
+          if [ -f "$ESP_CMAKE" ]; then
+            sed -i 's/set(BOOTLOADER_SIZE "0x2000")/set(BOOTLOADER_SIZE "0x10000")/g' "$ESP_CMAKE"
+            sed -i 's/set(BOOTLOADER_SIZE 0x2000)/set(BOOTLOADER_SIZE 0x10000)/g' "$ESP_CMAKE"
+            rm -rf esp-idf/components/partition_table/__pycache__
+            echo "✅ Patched BOOTLOADER_SIZE default in ESP-IDF source"
+          fi
+
           cd esp-idf
           ./install.sh esp32p4
 
@@ -91,10 +101,11 @@ jobs:
           echo "CONFIG_APP_OTA_ROLLBACK_ENABLE=n" >> sdkconfig.defaults
           echo "CONFIG_MIMI_SERVER_URL=wss://api.xiaozhi.me:443/v1" >> sdkconfig.defaults
 
+          # 🔥 Явно передаём переменную в CMake на этапе конфигурации
           idf.py set-target esp32p4
-          idf.py reconfigure
+          idf.py reconfigure -D BOOTLOADER_SIZE=0x10000
 
-          # 🔥 Заглушка emoji-шрифтов (безопасный тип возврата)
+          # Заглушка emoji-шрифтов (безопасный тип возврата для LVGL v9)
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -152,3 +163,23 @@ jobs:
 
           echo ">>> Starting idf.py build..."
           idf.py build
+
+      - name: Analyze Binary Size
+        if: success()
+        run: |
+          . ./esp-idf/export.sh
+          echo "Component Sizes"
+          idf.py size-components
+          echo "Memory Map"
+          idf.py size
+
+      - name: Upload Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: murzik-esp32p4-firmware
+          path: |
+            build/*.bin
+            build/bootloader/*.bin
+            build/partition_table/*.bin
+          retention-days: 7
