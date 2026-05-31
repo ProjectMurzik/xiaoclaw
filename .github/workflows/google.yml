@@ -32,48 +32,6 @@ jobs:
           # 1. ЖЕСТКО ЗАФИКСИРОВАННЫЙ ВАМИ URL КЛОНИРОВАНИЯ ФРЕЙМВОРКА (БЕЗ ИЗМЕНЕНИЙ)
           if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
             rm -rf esp-idf
-            git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
-            cd esp-idf
-            git submodule update --init --recursive
-            cd ..
-          fi
-          cd esp-idf
-          ./install.sh esp32p4
-
-name: ESP32-P4 Firmware Build
-
-on:
-  pull_request:
-    branches: [ "main" ]
-  workflow_dispatch:
-  push:
-    branches: [ "main" ]
-
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-
-      - name: Cache ESP-IDF and Components
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.espressif
-            managed_components
-          key: ${{ runner.os }}-esp-idf-v5.5.13-${{ hashFiles('main/idf_component.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-esp-idf-v5.5.13-
-
-      - name: Setup ESP-IDF v5.5
-        run: |
-          # 1. ЖЕСТКО ЗАФИКСИРОВАННЫЙ ВАМИ URL КЛОНИРОВАНИЯ ФРЕЙМВОРКА (БЕЗ ИЗМЕНЕНИЙ)
-          if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
-            rm -rf esp-idf
             git clone --depth 1 --branch release/v5.5 https://github.com
             cd esp-idf
             git submodule update --init --recursive
@@ -221,4 +179,3 @@ jobs:
             build/bootloader/*.bin
             build/partition_table/*.bin
           retention-days: 7
-
