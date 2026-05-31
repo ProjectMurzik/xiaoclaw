@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build deepseek
+name: ESP32-P4 Firmware Build
 
 on:
   pull_request:
@@ -48,51 +48,61 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
-          echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
-          echo "CONFIG_IDF_TARGET_ESP32P4=y" >> sdkconfig.defaults
-          echo "CONFIG_ESP32P4_REV_MIN_0=y" >> sdkconfig.defaults
-          echo "CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y" >> sdkconfig.defaults
-          echo "CONFIG_SPIRAM=y" >> sdkconfig.defaults
-          echo "CONFIG_SPIRAM_TYPE_AUTO=y" >> sdkconfig.defaults
-          echo "CONFIG_SPIRAM_SPEED_80M=y" >> sdkconfig.defaults
-          echo "CONFIG_SPIRAM_USE_MALLOC=y" >> sdkconfig.defaults
-          echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
-          echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=partitions.csv" >> sdkconfig.defaults
-          echo "CONFIG_PARTITION_TABLE_OFFSET=0x10000" >> sdkconfig.defaults
-          echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig.defaults
-          echo "CONFIG_PARTITION_TABLE_MD5=y" >> sdkconfig.defaults
-          echo "CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y" >> sdkconfig.defaults
-          echo "CONFIG_LCD_ENABLE=y" >> sdkconfig.defaults
-          echo "CONFIG_LCD_MIPI_DSI=y" >> sdkconfig.defaults
-          echo "CONFIG_LCD_MIPI_DSI_PHY_DUAL_LANE=y" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_ENABLE=y" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_COLOR_DEPTH=16" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_DRAW_BUF_SIZE=200000" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_MEM_POOL_INCLUDE_SPIRAM_HEAP=y" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_USE_IMGFONT=n" >> sdkconfig.defaults
-          echo "CONFIG_LV_FONT_FMT_TXT_LARGE=y" >> sdkconfig.defaults
-          echo "CONFIG_ESP_I2S_ENABLE=y" >> sdkconfig.defaults
-          echo "CONFIG_USE_AUDIO_PROCESSOR=y" >> sdkconfig.defaults
-          echo "CONFIG_CAMERA_ENABLE=n" >> sdkconfig.defaults
-          echo "CONFIG_ESP_VIDEO_ENABLE=n" >> sdkconfig.defaults
-          echo "CONFIG_ESP_SR_ENABLE=n" >> sdkconfig.defaults
-          echo "CONFIG_LANGUAGE_EN_US=y" >> sdkconfig.defaults
-          echo "CONFIG_FLASH_DEFAULT_ASSETS=n" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_OPTIMIZATION_PERF=y" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_WARNINGS_AS_ERRORS=n" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_CXX_RTTI=y" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_CXX_EXCEPTIONS=y" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_DISABLE_GCC8_WARNINGS=y" >> sdkconfig.defaults
-          echo "CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y" >> sdkconfig.defaults
-          echo "CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y" >> sdkconfig.defaults
-          echo "CONFIG_ENABLE_OTA=n" >> sdkconfig.defaults
-          echo "CONFIG_APP_OTA_ROLLBACK_ENABLE=n" >> sdkconfig.defaults
-          echo "CONFIG_MIMI_SERVER_URL=wss://api.xiaozhi.me:443/v1" >> sdkconfig.defaults
+          printf '%s\n' \
+            'CONFIG_IDF_TARGET="esp32p4"' \
+            'CONFIG_IDF_TARGET_ESP32P4=y' \
+            'CONFIG_ESP32P4_REV_MIN_0=y' \
+            'CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y' \
+            'CONFIG_SPIRAM=y' \
+            'CONFIG_SPIRAM_TYPE_AUTO=y' \
+            'CONFIG_SPIRAM_SPEED_80M=y' \
+            'CONFIG_SPIRAM_USE_MALLOC=y' \
+            'CONFIG_PARTITION_TABLE_CUSTOM=y' \
+            'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"' \
+            'CONFIG_PARTITION_TABLE_OFFSET=0x10000' \
+            'CONFIG_PARTITION_TABLE_MD5=y' \
+            'CONFIG_BOOTLOADER_SIZE=0x10000' \
+            'CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y' \
+            'CONFIG_LCD_ENABLE=y' \
+            'CONFIG_LCD_MIPI_DSI=y' \
+            'CONFIG_LCD_MIPI_DSI_PHY_DUAL_LANE=y' \
+            'CONFIG_LVGL_ENABLE=y' \
+            'CONFIG_LVGL_COLOR_DEPTH=16' \
+            'CONFIG_LVGL_DRAW_BUF_SIZE=200000' \
+            'CONFIG_LVGL_MEM_POOL_INCLUDE_SPIRAM_HEAP=y' \
+            'CONFIG_LVGL_USE_IMGFONT=n' \
+            'CONFIG_LV_FONT_FMT_TXT_LARGE=y' \
+            'CONFIG_ESP_I2S_ENABLE=y' \
+            'CONFIG_USE_AUDIO_PROCESSOR=y' \
+            'CONFIG_CAMERA_ENABLE=n' \
+            'CONFIG_ESP_VIDEO_ENABLE=n' \
+            'CONFIG_ESP_SR_ENABLE=n' \
+            'CONFIG_LANGUAGE_EN_US=y' \
+            'CONFIG_FLASH_DEFAULT_ASSETS=n' \
+            'CONFIG_COMPILER_OPTIMIZATION_PERF=y' \
+            'CONFIG_COMPILER_WARNINGS_AS_ERRORS=n' \
+            'CONFIG_COMPILER_CXX_RTTI=y' \
+            'CONFIG_COMPILER_CXX_EXCEPTIONS=y' \
+            'CONFIG_COMPILER_DISABLE_GCC8_WARNINGS=y' \
+            'CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y' \
+            'CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y' \
+            'CONFIG_ENABLE_OTA=n' \
+            'CONFIG_APP_OTA_ROLLBACK_ENABLE=n' \
+            'CONFIG_MIMI_SERVER_URL="wss://api.xiaozhi.me:443/v1"' \
+            > sdkconfig.defaults
+
+          printf '%s\n' \
+            'nvs,data,nvs,,0x6000,' \
+            'phy_init,data,phy,,0x1000,' \
+            'factory,app,factory,,0x500000,' \
+            'ota_0,app,ota_0,,0x500000,' \
+            'ota_1,app,ota_1,,0x500000,' \
+            'storage,data,fat,,0xA00000,' \
+            > partitions.csv
 
           idf.py set-target esp32p4
           idf.py reconfigure
 
-          # 🔥 КРИТИЧЕСКИЙ ХАК: подмена check_sizes.py
           CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
           if [ -f "$CHECK_SCRIPT" ]; then
             echo "#!/usr/bin/env python3" > "$CHECK_SCRIPT"
@@ -102,7 +112,6 @@ jobs:
             echo "check_sizes.py replaced with bypass"
           fi
 
-          # Обход проблемы GT911
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -111,14 +120,12 @@ jobs:
             fi
           fi
 
-          # Отключаем -Werror в компонентах
           find ./managed_components -name "CMakeLists.txt" -type f | while read -r cmake_file; do
             sed -i 's/-Werror //g' "$cmake_file"
             sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
             sed -i 's/-Werror$//g' "$cmake_file"
           done 2>/dev/null || true
 
-          # Фикс для xiaozhi-fonts
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -127,15 +134,12 @@ jobs:
             fi
           done
 
-          # Отключаем варнинги в esp_lvgl_port
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
             grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || \
               sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
             grep -q "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file" || \
               sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done 2>/dev/null || true
-
-          # Удалён блок LV_FONT_FMT_TXT_LARGE fix
 
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=stringop-truncation"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=stringop-truncation -fpermissive -frtti"
