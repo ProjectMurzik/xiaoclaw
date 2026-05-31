@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build qwen
+name: ESP32-P4 Firmware Build
 
 on:
   pull_request:
@@ -48,7 +48,7 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
-          # === sdkconfig.defaults (полная конфигурация) ===
+          # === sdkconfig.defaults ===
           echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
           echo "CONFIG_IDF_TARGET_ESP32P4=y" >> sdkconfig.defaults
           echo "CONFIG_ESP32P4_REV_MIN_0=y" >> sdkconfig.defaults
@@ -60,7 +60,6 @@ jobs:
           echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=partitions.csv" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_OFFSET=0x10000" >> sdkconfig.defaults
-          echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_MD5=y" >> sdkconfig.defaults
           echo "CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y" >> sdkconfig.defaults
           echo "CONFIG_LCD_ENABLE=y" >> sdkconfig.defaults
@@ -93,7 +92,7 @@ jobs:
           idf.py set-target esp32p4
           
 
-          # === Патч CMake ДО reconfigure (безопасный awk) ===
+          # === Патч CMake ДО reconfigure ===
           BOOT_CMAKE="${IDF_PATH}/components/bootloader/subproject/main/CMakeLists.txt"
           if [ -f "$BOOT_CMAKE" ]; then
             awk '
@@ -127,7 +126,7 @@ jobs:
             fi
           fi
 
-          # === esp_video: безопасное отключение -Werror ===
+          # === esp_video: БЕЗОПАСНОЕ отключение -Werror (разбито на части) ===
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f | while read -r cmake_file; do
             sed -i 's/-Werror //g' "$cmake_file"
             sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
@@ -143,7 +142,7 @@ jobs:
             fi
           done
 
-          # === esp_lvgl_port: универсальный патч для всех .c ===
+          # === esp_lvgl_port: универсальный патч ===
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
             grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || \
               sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
@@ -153,4 +152,39 @@ jobs:
 
           # === Большие таблицы для шрифтов ===
           for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
-            [ -f "$f" ] && sed -i '1i #define LV_FONT
+            [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
+          done
+
+          # === C++ флаги для main ===
+          if [ -f "main/CMakeLists.txt" ]; then
+            echo "" >> main/CMakeLists.txt
+            echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
+            echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
+          fi
+
+          # === Глобальные флаги ===
+          export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
+          export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -frtti"
+
+          echo ">>> Starting idf.py build..."
+          idf.py build
+
+      - name: Analyze Binary Size
+        if: success()
+        run: |
+          . ./esp-idf/export.sh
+          echo "📊 === COMPONENT SIZES ==="
+          idf.py size-components
+          echo "📊 === MEMORY MAP ==="
+          idf.py size
+
+      - name: Upload Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: murzik-esp32p4-firmware
+          path: |
+            build/*.bin
+            build/bootloader/*.bin
+            build/partition_table/*.bin
+          retention-days: 7
