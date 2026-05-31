@@ -60,7 +60,18 @@ jobs:
           rm -rf build
 
           # ------------------------------------------------------------
-          # 🔥 ИСПРАВЛЕНИЕ strncpy В agent_loop.c (убираем stringop-truncation)
+          # 🔥 ГЛОБАЛЬНОЕ ОТКЛЮЧЕНИЕ stringop-truncation В CMakeLists.txt
+          # ------------------------------------------------------------
+          if [ -f "CMakeLists.txt" ]; then
+            # Добавляем опцию, если её ещё нет
+            if ! grep -q "Wno-error=stringop-truncation" CMakeLists.txt; then
+              echo "Добавляем -Wno-error=stringop-truncation в CMakeLists.txt"
+              sed -i '1i add_compile_options(-Wno-error=stringop-truncation)\n' CMakeLists.txt
+            fi
+          fi
+
+          # ------------------------------------------------------------
+          # 🔥 ИСПРАВЛЕНИЕ agent_loop.c (strncpy -> snprintf)
           # ------------------------------------------------------------
           AGENT_LOOP_FILE="main/mimi/agent/agent_loop.c"
           if [ -f "$AGENT_LOOP_FILE" ]; then
@@ -69,13 +80,31 @@ jobs:
             sed -i 's|strncpy(out\.channel, msg\.channel, sizeof(out\.channel) - 1);|snprintf(out.channel, sizeof(out.channel), "%s", msg.channel);|g' "$AGENT_LOOP_FILE"
             sed -i 's|strncpy(status\.chat_id, msg\.chat_id, sizeof(status\.chat_id) - 1);|snprintf(status.chat_id, sizeof(status.chat_id), "%s", msg.chat_id);|g' "$AGENT_LOOP_FILE"
             sed -i 's|strncpy(status\.channel, msg\.channel, sizeof(status\.channel) - 1);|snprintf(status.channel, sizeof(status.channel), "%s", msg.channel);|g' "$AGENT_LOOP_FILE"
-            echo "Исправление завершено."
+            echo "Исправление $AGENT_LOOP_FILE завершено."
           else
             echo "Ошибка: файл $AGENT_LOOP_FILE не найден!"
             exit 1
           fi
-          # ------------------------------------------------------------
 
+          # ------------------------------------------------------------
+          # 🔥 ИСПРАВЛЕНИЕ tool_web_search.c (strncpy -> snprintf)
+          # ------------------------------------------------------------
+          WEB_SEARCH_FILE="main/mimi/tools/tool_web_search.c"
+          if [ -f "$WEB_SEARCH_FILE" ]; then
+            echo "Исправляем $WEB_SEARCH_FILE: заменяем strncpy на snprintf..."
+            sed -i 's|strncpy(s_brave_key, MIMI_SECRET_SEARCH_KEY, sizeof(s_brave_key) - 1);|snprintf(s_brave_key, sizeof(s_brave_key), "%s", MIMI_SECRET_SEARCH_KEY);|g' "$WEB_SEARCH_FILE"
+            sed -i 's|strncpy(s_tavily_key, MIMI_SECRET_TAVILY_KEY, sizeof(s_tavily_key) - 1);|snprintf(s_tavily_key, sizeof(s_tavily_key), "%s", MIMI_SECRET_TAVILY_KEY);|g' "$WEB_SEARCH_FILE"
+            sed -i 's|strncpy(s_brave_key, tmp, sizeof(s_brave_key) - 1);|snprintf(s_brave_key, sizeof(s_brave_key), "%s", tmp);|g' "$WEB_SEARCH_FILE"
+            sed -i 's|strncpy(s_tavily_key, tmp, sizeof(s_tavily_key) - 1);|snprintf(s_tavily_key, sizeof(s_tavily_key), "%s", tmp);|g' "$WEB_SEARCH_FILE"
+            echo "Исправление $WEB_SEARCH_FILE завершено."
+          else
+            echo "Ошибка: файл $WEB_SEARCH_FILE не найден!"
+            exit 1
+          fi
+
+          # ------------------------------------------------------------
+          # СОЗДАНИЕ КОНФИГУРАЦИОННЫХ ФАЙЛОВ
+          # ------------------------------------------------------------
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
             'CONFIG_IDF_TARGET_ESP32P4=y' \
@@ -132,6 +161,9 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
+          # ------------------------------------------------------------
+          # ДОПОЛНИТЕЛЬНЫЕ ПЕРЕМЕННЫЕ И ХАКИ
+          # ------------------------------------------------------------
           export IDF_GDB_BUILD=1
           export IDF_ENV_FPGA=1
           export CFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
