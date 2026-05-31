@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build (FIXED)
+name: ESP32-P4 Firmware Build
 
 on:
   push:
@@ -54,7 +54,6 @@ jobs:
           rm -rf build
 
           # 🔥 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Одинарные кавычки снаружи сохраняют двойные внутри!
-          # Это решает "malformed string literal" warnings
           echo 'CONFIG_IDF_TARGET="esp32p4"' > sdkconfig.defaults
           echo 'CONFIG_IDF_TARGET_ESP32P4=y' >> sdkconfig.defaults
           echo 'CONFIG_ESP32P4_REV_MIN_0=y' >> sdkconfig.defaults
