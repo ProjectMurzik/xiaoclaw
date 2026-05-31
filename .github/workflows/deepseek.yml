@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build deepseek
+name: ESP32-P4 Firmware Build
 
 on:
   pull_request:
@@ -89,6 +89,7 @@ jobs:
             'CONFIG_ENABLE_OTA=n' \
             'CONFIG_APP_OTA_ROLLBACK_ENABLE=n' \
             'CONFIG_MIMI_SERVER_URL="wss://api.xiaozhi.me:443/v1"' \
+            'CONFIG_IDF_ENV_FPGA=y' \
             > sdkconfig.defaults
 
           printf '%s\n' \
@@ -103,7 +104,7 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-          # 🔥 ПРИНУДИТЕЛЬНОЕ ОТКЛЮЧЕНИЕ -Werror
+          # Принудительное отключение -Werror и активация FPGA режима
           export IDF_GDB_BUILD=1
           export IDF_ENV_FPGA=1
           export CFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
