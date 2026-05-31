@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build google
+name: ESP32-P4 Firmware Build
 
 on:
   pull_request:
@@ -32,7 +32,7 @@ jobs:
           # 1. ЖЕСТКО ЗАФИКСИРОВАННЫЙ ВАМИ URL КЛОНИРОВАНИЯ ФРЕЙМВОРКА (БЕЗ ИЗМЕНЕНИЙ)
           if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
             rm -rf esp-idf
-            git clone --depth 1 --branch release/v5.5 https://github.com
+            git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
             cd esp-idf
             git submodule update --init --recursive
             cd ..
@@ -93,10 +93,10 @@ jobs:
           idf.py set-target esp32p4
           sed -i 's/CONFIG_BOOTLOADER_SIZE=0x2000/CONFIG_BOOTLOADER_SIZE=0x10000/g' sdkconfig 2>/dev/null || echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig
           
-          # Генерируем карту проекта (рождаются файлы build.ninja)
+          # Генерируем сборочный граф проекта (рождаются файлы build.ninja)
           idf.py reconfigure
 
-          # Воркфлоу вырезания проверки размеров
+          # Хирургический вырез валидатора размера бутлоадера из сгенерированного графа Ninja
           if [ -f "build/bootloader/build.ninja" ]; then
             sed -i '/check_sizes\.py/d' build/bootloader/build.ninja
             echo "Removed check_sizes.py from build.ninja"
@@ -108,7 +108,7 @@ jobs:
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
               rm -f "$GT911_H"
-              curl -sS -o "$GT911_H" "https://githubusercontent.com" || echo "⚠️ Failed to restore original"
+              curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || echo "⚠️ Failed to restore original"
               echo "✅ Драйвер тача успешно восстановлен"
             fi
           fi
@@ -122,7 +122,7 @@ jobs:
             fi
           fi
 
-          # Безопасный POSIX find для esp_video (без опасных циклов while read и конфликтов stdin)
+          # Безопасный POSIX find для вырезания -Werror в модуле esp_video
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \; 2>/dev/null || true
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror=deprecated-declarations//g' {} \; 2>/dev/null || true
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror$//g' {} \; 2>/dev/null || true
@@ -135,7 +135,7 @@ jobs:
             fi
           done
 
-          # Безопасный find -exec для esp_lvgl_port (Защита от изменений структуры каталогов в LVGL v9)
+          # Безопасный find -exec для внедрения прагм во все файлы esp_lvgl_port (Защита от смены структуры в LVGL v9)
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec bash -c '
             file="$1"
             grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || sed -i "1i #pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file"
@@ -146,14 +146,14 @@ jobs:
             [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
           done
 
-          # === 9. C++ флаги для main (Опечатка -Wno-error=macro-redefined вырезана) ===
+          # === 9. C++ флаги для main (Синтаксическая опечатка GCC полностью вырезана) ===
           if [ -f "main/CMakeLists.txt" ]; then
             echo "" >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init)' >> main/CMakeLists.txt
           fi
 
-          # === 10. Глобальные флаги компиляции (Опечатка вычищена из обеих строк) ===
+          # === 10. Глобальные флаги компиляции для тулчейна GCC (Синтаксическая опечатка вычищена) ===
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -fpermissive -frtti"
 
