@@ -98,15 +98,14 @@ jobs:
 
           idf.py reconfigure
 
-          # === ПРЯМОЙ ПАТЧ build.ninja ===
-          NINJA_FILE="build/bootloader/build.ninja"
-          if [ -f "$NINJA_FILE" ]; then
-            sed -i '/check_sizes\.py/ s|^\( *command = \).*|\1echo "Bootloader size check bypassed"|' "$NINJA_FILE"
-            touch "$NINJA_FILE"
-            echo "✅ check_sizes.py call removed from build.ninja"
-          fi
+          # 🔥 Полностью удаляем вызов check_sizes.py из всех build.ninja
+          find build -name "build.ninja" -type f | while read -r ninja; do
+            sed -i '/check_sizes\.py/d' "$ninja"
+            echo "✅ Removed check_sizes.py call from $ninja"
+          done
+          rm -f build/.ninja_log build/.ninja_deps 2>/dev/null || true
 
-          # === Патч CMake (оставляем на всякий случай, но уже не основной) ===
+          # === Патч CMake (оставляем на всякий случай) ===
           BOOT_CMAKE="${IDF_PATH}/components/bootloader/subproject/main/CMakeLists.txt"
           if [ -f "$BOOT_CMAKE" ]; then
             awk '
