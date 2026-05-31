@@ -94,15 +94,7 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-          # 🔥 КРИТИЧЕСКИЙ ФИКС: Атомарная замена check_sizes.py на стаб
-          CHECK_SIZES="${IDF_PATH}/components/partition_table/check_sizes.py"
-          if [ -f "$CHECK_SIZES" ]; then
-            echo "import sys" > "$CHECK_SIZES"
-            echo "sys.exit(0)" >> "$CHECK_SIZES"
-            chmod +x "$CHECK_SIZES"
-            echo "✅ Replaced check_sizes.py with stub"
-          fi
-
+          # 🔥 Заглушка emoji-шрифтов (безопасный тип возврата)
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -160,23 +152,3 @@ jobs:
 
           echo ">>> Starting idf.py build..."
           idf.py build
-
-      - name: Analyze Binary Size
-        if: success()
-        run: |
-          . ./esp-idf/export.sh
-          echo "Component Sizes"
-          idf.py size-components
-          echo "Memory Map"
-          idf.py size
-
-      - name: Upload Artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: murzik-esp32p4-firmware
-          path: |
-            build/*.bin
-            build/bootloader/*.bin
-            build/partition_table/*.bin
-          retention-days: 7
