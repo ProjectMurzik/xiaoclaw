@@ -1,4 +1,4 @@
-name: ESP32-P4 qwen
+name: ESP32-P4 Firmware Build
 
 on:
   push:
@@ -39,27 +39,6 @@ jobs:
           cd esp-idf
           ./install.sh esp32p4
 
-      - name: Patch check_sizes.py (BEFORE reconfigure)
-        run: |
-          . ./esp-idf/export.sh
-          CHECK_SIZES="${IDF_PATH}/components/partition_table/check_sizes.py"
-          echo "🔍 IDF_PATH = ${IDF_PATH}"
-          echo "🔍 Target file = ${CHECK_SIZES}"
-          
-          if [ -f "$CHECK_SIZES" ]; then
-            # Атомарная замена через echo (без heredoc)
-            echo '#!/usr/bin/env python3' > "$CHECK_SIZES"
-            echo 'import sys' >> "$CHECK_SIZES"
-            echo 'sys.exit(0)' >> "$CHECK_SIZES"
-            chmod +x "$CHECK_SIZES"
-            echo "✅ Patched check_sizes.py BEFORE reconfigure"
-            echo "📄 File contents:"
-            cat "$CHECK_SIZES"
-          else
-            echo "❌ File not found: $CHECK_SIZES"
-            exit 1
-          fi
-
       - name: Configure Project
         run: |
           . ./esp-idf/export.sh
@@ -83,7 +62,7 @@ jobs:
           echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=partitions.csv" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_OFFSET=0x10000" >> sdkconfig.defaults
-          echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig.defaults
+          echo "CONFIG_BOOTLOADER_OFFSET_IN_FLASH=0x0" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_MD5=y" >> sdkconfig.defaults
           echo "CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y" >> sdkconfig.defaults
           echo "CONFIG_LCD_ENABLE=y" >> sdkconfig.defaults
@@ -116,33 +95,29 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-      - name: Re-patch check_sizes.py (BEFORE build) + Debug
+      - name: Inject BOOTLOADER_OFFSET + Touch Trick (NEW APPROACH)
         run: |
-          . ./esp-idf/export.sh
-          export PYTHONDONTWRITEBYTECODE=1
-          CHECK_SIZES="${IDF_PATH}/components/partition_table/check_sizes.py"
+          # 🔥 КЛЮЧЕВОЙ НОВЫЙ ШАГ: Инъекция BOOTLOADER_OFFSET=0x0 в CMakeCache подпроекта
+          # Это изменяет max_size = PARTITION_TABLE_OFFSET - BOOTLOADER_OFFSET
+          # Было: max_size = 0x10000 - 0x2000 = 0xE000 (56 KB)
+          # Стало: max_size = 0x10000 - 0x0 = 0x10000 (64 KB)
+          CACHE_FILE="build/bootloader/CMakeCache.txt"
+          if [ -f "$CACHE_FILE" ]; then
+            # Удаляем старое значение и добавляем новое
+            sed -i '/BOOTLOADER_OFFSET/d' "$CACHE_FILE"
+            echo "BOOTLOADER_OFFSET:STRING=0x0" >> "$CACHE_FILE"
+            echo "✅ Injected BOOTLOADER_OFFSET=0x0 into bootloader CMakeCache"
+          fi
           
-          # 🔥 ВТОРОЙ ПАТЧ на случай, если reconfigure его восстановил
-          echo '#!/usr/bin/env python3' > "$CHECK_SIZES"
-          echo 'import sys' >> "$CHECK_SIZES"
-          echo 'sys.exit(0)' >> "$CHECK_SIZES"
-          chmod +x "$CHECK_SIZES"
-          echo "✅ Re-patched check_sizes.py BEFORE build"
-          echo "📄 File contents:"
-          cat "$CHECK_SIZES"
+          # 🔥 TOUCH TRICK: Делаем build.ninja "новее" всех исходников,
+          # чтобы CMake НЕ перезаписывал его при idf.py build
+          touch -d "next week" build/bootloader/build.ninja 2>/dev/null || true
+          touch -d "next week" build/bootloader/CMakeCache.txt 2>/dev/null || true
+          touch -d "next week" build/build.ninja 2>/dev/null || true
+          touch -d "next week" build/CMakeCache.txt 2>/dev/null || true
+          echo "✅ Touch trick applied - CMake will not overwrite build.ninja"
           
-          # Удаляем ВСЕ кэши Python
-          find /home/runner/.espressif -name "*.pyc" -delete 2>/dev/null || true
-          find /home/runner/.espressif -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-          find "${IDF_PATH}" -name "*.pyc" -delete 2>/dev/null || true
-          find "${IDF_PATH}" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-          echo "✅ All Python caches cleared"
-          
-          # Показываем, что в build.ninja
-          echo "🔍 What's in build/bootloader/build.ninja:"
-          grep -n "check_sizes" build/bootloader/build.ninja | head -5 || echo "(no matches)"
-          
-          # Очищаем ninja кэш
+          # Дополнительная очистка Python кэшей
           rm -f build/.ninja_log build/.ninja_deps build/bootloader/.ninja_log build/bootloader/.ninja_deps 2>/dev/null || true
 
       - name: Apply Component Fixes
@@ -208,6 +183,28 @@ jobs:
 
           echo ">>> Starting idf.py build..."
           idf.py build
+
+      - name: Verify Build Artifacts
+        run: |
+          echo ">>> Checking critical build artifacts..."
+          ARTIFACTS_OK=true
+          for artifact in build/bootloader/bootloader.bin build/partition_table/partition-table.bin build/xiaoclaw.bin build/xiaoclaw.elf; do
+            if [ -f "$artifact" ]; then
+              SIZE=$(stat -c%s "$artifact" 2>/dev/null || stat -f%z "$artifact" 2>/dev/null || echo "?")
+              echo "✅ $artifact exists (${SIZE} bytes)"
+            else
+              echo "⚠️ $artifact not found"
+            fi
+          done
+
+      - name: Analyze Binary Size
+        if: success()
+        run: |
+          . ./esp-idf/export.sh
+          echo "Component Sizes"
+          idf.py size-components || true
+          echo "Memory Map"
+          idf.py size || true
 
       - name: Upload Artifacts
         if: success()
