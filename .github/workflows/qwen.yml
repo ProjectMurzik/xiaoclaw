@@ -1,4 +1,4 @@
-name: ESP32-P4 qwen
+name: ESP32-P4 Firmware Build
 
 on:
   push:
@@ -53,71 +53,38 @@ jobs:
 
           echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
           echo "CONFIG_IDF_TARGET_ESP32P4=y" >> sdkconfig.defaults
-          echo "CONFIG_ESP32P4_REV_MIN_0=y" >> sdkconfig.defaults
           echo "CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y" >> sdkconfig.defaults
           echo "CONFIG_SPIRAM=y" >> sdkconfig.defaults
-          echo "CONFIG_SPIRAM_TYPE_AUTO=y" >> sdkconfig.defaults
           echo "CONFIG_SPIRAM_SPEED_80M=y" >> sdkconfig.defaults
           echo "CONFIG_SPIRAM_USE_MALLOC=y" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=partitions.csv" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_OFFSET=0x10000" >> sdkconfig.defaults
-          echo "CONFIG_BOOTLOADER_OFFSET_IN_FLASH=0x0" >> sdkconfig.defaults
-          echo "CONFIG_PARTITION_TABLE_MD5=y" >> sdkconfig.defaults
-          echo "CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y" >> sdkconfig.defaults
-          echo "CONFIG_LCD_ENABLE=y" >> sdkconfig.defaults
-          echo "CONFIG_LCD_MIPI_DSI=y" >> sdkconfig.defaults
-          echo "CONFIG_LCD_MIPI_DSI_PHY_DUAL_LANE=y" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_ENABLE=y" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_COLOR_DEPTH=16" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_DRAW_BUF_SIZE=200000" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_MEM_POOL_INCLUDE_SPIRAM_HEAP=y" >> sdkconfig.defaults
-          echo "CONFIG_LVGL_USE_IMGFONT=n" >> sdkconfig.defaults
-          echo "CONFIG_LV_FONT_FMT_TXT_LARGE=y" >> sdkconfig.defaults
-          echo "CONFIG_ESP_I2S_ENABLE=y" >> sdkconfig.defaults
-          echo "CONFIG_USE_AUDIO_PROCESSOR=y" >> sdkconfig.defaults
-          echo "CONFIG_CAMERA_ENABLE=n" >> sdkconfig.defaults
-          echo "CONFIG_ESP_VIDEO_ENABLE=n" >> sdkconfig.defaults
-          echo "CONFIG_ESP_SR_ENABLE=n" >> sdkconfig.defaults
-          echo "CONFIG_LANGUAGE_EN_US=y" >> sdkconfig.defaults
-          echo "CONFIG_FLASH_DEFAULT_ASSETS=n" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_OPTIMIZATION_PERF=y" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_WARNINGS_AS_ERRORS=n" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_CXX_RTTI=y" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_CXX_EXCEPTIONS=y" >> sdkconfig.defaults
-          echo "CONFIG_COMPILER_DISABLE_GCC8_WARNINGS=y" >> sdkconfig.defaults
           echo "CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y" >> sdkconfig.defaults
           echo "CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y" >> sdkconfig.defaults
-          echo "CONFIG_ENABLE_OTA=n" >> sdkconfig.defaults
-          echo "CONFIG_APP_OTA_ROLLBACK_ENABLE=n" >> sdkconfig.defaults
-          echo "CONFIG_MIMI_SERVER_URL=wss://api.xiaozhi.me:443/v1" >> sdkconfig.defaults
+          echo "CONFIG_COMPILER_OPTIMIZATION_PERF=y" >> sdkconfig.defaults
+          echo "CONFIG_COMPILER_CXX_RTTI=y" >> sdkconfig.defaults
+          echo "CONFIG_COMPILER_CXX_EXCEPTIONS=y" >> sdkconfig.defaults
+
+          echo "Created clean sdkconfig.defaults"
+          cat sdkconfig.defaults
 
           idf.py set-target esp32p4
           idf.py reconfigure
 
-      - name: Inject BOOTLOADER_OFFSET + Touch Trick (NEW APPROACH)
+      - name: Inject BOOTLOADER_OFFSET + Touch Trick
         run: |
-          # 🔥 КЛЮЧЕВОЙ НОВЫЙ ШАГ: Инъекция BOOTLOADER_OFFSET=0x0 в CMakeCache подпроекта
-          # Это изменяет max_size = PARTITION_TABLE_OFFSET - BOOTLOADER_OFFSET
-          # Было: max_size = 0x10000 - 0x2000 = 0xE000 (56 KB)
-          # Стало: max_size = 0x10000 - 0x0 = 0x10000 (64 KB)
           CACHE_FILE="build/bootloader/CMakeCache.txt"
           if [ -f "$CACHE_FILE" ]; then
-            # Удаляем старое значение и добавляем новое
             sed -i '/BOOTLOADER_OFFSET/d' "$CACHE_FILE"
             echo "BOOTLOADER_OFFSET:STRING=0x0" >> "$CACHE_FILE"
-            echo "✅ Injected BOOTLOADER_OFFSET=0x0 into bootloader CMakeCache"
+            echo "Injected BOOTLOADER_OFFSET=0x0"
           fi
-          
-          # 🔥 TOUCH TRICK: Делаем build.ninja "новее" всех исходников,
-          # чтобы CMake НЕ перезаписывал его при idf.py build
           touch -d "next week" build/bootloader/build.ninja 2>/dev/null || true
           touch -d "next week" build/bootloader/CMakeCache.txt 2>/dev/null || true
           touch -d "next week" build/build.ninja 2>/dev/null || true
           touch -d "next week" build/CMakeCache.txt 2>/dev/null || true
-          echo "✅ Touch trick applied - CMake will not overwrite build.ninja"
-          
-          # Дополнительная очистка Python кэшей
+          echo "Touch trick applied"
           rm -f build/.ninja_log build/.ninja_deps build/bootloader/.ninja_log build/bootloader/.ninja_deps 2>/dev/null || true
 
       - name: Apply Component Fixes
@@ -180,31 +147,20 @@ jobs:
           export PYTHONDONTWRITEBYTECODE=1
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -frtti"
-
-          echo ">>> Starting idf.py build..."
+          echo "Starting idf.py build"
           idf.py build
 
       - name: Verify Build Artifacts
         run: |
-          echo ">>> Checking critical build artifacts..."
-          ARTIFACTS_OK=true
+          echo "Checking critical build artifacts"
           for artifact in build/bootloader/bootloader.bin build/partition_table/partition-table.bin build/xiaoclaw.bin build/xiaoclaw.elf; do
             if [ -f "$artifact" ]; then
               SIZE=$(stat -c%s "$artifact" 2>/dev/null || stat -f%z "$artifact" 2>/dev/null || echo "?")
-              echo "✅ $artifact exists (${SIZE} bytes)"
+              echo "OK $artifact exists ($SIZE bytes)"
             else
-              echo "⚠️ $artifact not found"
+              echo "MISSING $artifact"
             fi
           done
-
-      - name: Analyze Binary Size
-        if: success()
-        run: |
-          . ./esp-idf/export.sh
-          echo "Component Sizes"
-          idf.py size-components || true
-          echo "Memory Map"
-          idf.py size || true
 
       - name: Upload Artifacts
         if: success()
