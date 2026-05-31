@@ -94,8 +94,13 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-          # 🔥 АБСОЛЮТНЫЙ ФИКС: Безопасный однострочный патч Ninja (без heredoc)
-          python3 -c 'import os; [open(n, "w").write("".join("command = /bin/true\n" if ("check_sizes.py" in l and "bootloader" in l) else l for l in open(n, "r"))) for n in ["build/bootloader/build.ninja", "build/build.ninja"] if os.path.exists(n)]'
+          # 🔥 ФИНАЛЬНЫЙ ФИКС: Безопасный патч Ninja (без Python I/O race condition)
+          for ninja_file in build/bootloader/build.ninja build/build.ninja; do
+            if [ -f "$ninja_file" ]; then
+              sed -i '/check_sizes\.py/s|command = .*|command = /bin/true|' "$ninja_file"
+              echo "✅ Patched $ninja_file"
+            fi
+          done
           rm -f build/.ninja_log build/.ninja_deps build/bootloader/.ninja_log build/bootloader/.ninja_deps 2>/dev/null || true
 
           # Заглушка emoji-шрифтов (безопасный тип возврата для LVGL v9)
