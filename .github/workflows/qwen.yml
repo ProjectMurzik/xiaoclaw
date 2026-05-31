@@ -48,7 +48,7 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
-          # === ОФИЦИАЛЬНАЯ КОНФИГУРАЦИЯ ESP-IDF (без хаков) ===
+          # === Конфигурация ===
           echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
           echo "CONFIG_IDF_TARGET_ESP32P4=y" >> sdkconfig.defaults
           echo "CONFIG_ESP32P4_REV_MIN_0=y" >> sdkconfig.defaults
@@ -59,12 +59,10 @@ jobs:
           echo "CONFIG_SPIRAM_USE_MALLOC=y" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=partitions.csv" >> sdkconfig.defaults
-          
-          # 🔥 КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Стандартное смещение партишн-таблицы
           echo "CONFIG_PARTITION_TABLE_OFFSET=0x8000" >> sdkconfig.defaults
           echo "CONFIG_BOOTLOADER_OFFSET_IN_FLASH=0x0" >> sdkconfig.defaults
+          echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig.defaults
           echo "CONFIG_PARTITION_TABLE_MD5=y" >> sdkconfig.defaults
-          
           echo "CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y" >> sdkconfig.defaults
           echo "CONFIG_LCD_ENABLE=y" >> sdkconfig.defaults
           echo "CONFIG_LCD_MIPI_DSI=y" >> sdkconfig.defaults
@@ -93,15 +91,11 @@ jobs:
           echo "CONFIG_APP_OTA_ROLLBACK_ENABLE=n" >> sdkconfig.defaults
           echo "CONFIG_MIMI_SERVER_URL=wss://api.xiaozhi.me:443/v1" >> sdkconfig.defaults
 
+          # Применяем таргет
           idf.py set-target esp32p4
-          idf.py reconfigure
 
-          # 🔥 Патч лимита в Ninja (сохраняет валидацию, но даёт корректный размер)
-          if [ -f "build/bootloader/build.ninja" ]; then
-            sed -i 's|bootloader 0x2000|bootloader 0x8000|g' build/bootloader/build.ninja
-            echo "✅ Aligned bootloader size limit to 0x8000 in build.ninja"
-          fi
-          rm -f build/.ninja_log build/.ninja_deps 2>/dev/null || true
+          # 🔥 КЛЮЧЕВОЙ ФИКС: Переопределяем CMake-переменную лимита ДО генерации правил
+          idf.py -D BOOTLOADER_SIZE=0x10000 reconfigure
 
           # === Восстановление GT911 ===
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
