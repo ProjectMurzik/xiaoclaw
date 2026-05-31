@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build
+name: ESP32-P4 Firmware Build qwen
 
 on:
   push:
@@ -95,18 +95,27 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-      - name: Patch Ninja Rules (Multiline-Safe)
+      - name: Multiline-Safe Ninja Patch
         run: |
-          # 🔥 НОВЫЙ МЕТОД: Python читает файл целиком, игнорируя \ переносы Ninja
+          # 🔥 Python regex игнорирует \n и пробелы между bootloader и 0x2000
           python3 -c "
-          import os, pathlib
-          for f in pathlib.Path('build').rglob('build.ninja'):
-              txt = f.read_text()
-              if 'bootloader 0x2000' in txt:
-                  f.write_text(txt.replace('bootloader 0x2000', 'bootloader 0x10000'))
-                  print(f'✅ Multiline-safe patched {f}')
+          import re, pathlib
+          target = pathlib.Path('build/bootloader/build.ninja')
+          if target.exists():
+              text = target.read_text()
+              # Заменяем 0x2000 на 0x10000 даже если они разбиты переносом строки
+              new_text = re.sub(r'bootloader\s+0x2000', 'bootloader 0x10000', text)
+              target.write_text(new_text)
+              print('✅ Multiline-safe patched build.ninja')
+              # Проверка
+              if 'bootloader 0x10000' in new_text:
+                  print('🔍 Verification: 0x10000 found in rules')
+              else:
+                  print('❌ Warning: 0x10000 not found after patch')
+          else:
+              print('⚠️ build.ninja not found')
           "
-          # Очистка кэшей зависимостей
+          # Очистка кэшей
           rm -f build/.ninja_log build/.ninja_deps build/bootloader/.ninja_log build/bootloader/.ninja_deps 2>/dev/null || true
           find "${IDF_PATH}" -path "*partition_table*" -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
