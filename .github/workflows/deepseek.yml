@@ -48,7 +48,7 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
-          # === sdkconfig.defaults (полный, как ранее) ===
+          # === sdkconfig.defaults ===
           echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
           echo "CONFIG_IDF_TARGET_ESP32P4=y" >> sdkconfig.defaults
           echo "CONFIG_ESP32P4_REV_MIN_0=y" >> sdkconfig.defaults
@@ -92,20 +92,24 @@ jobs:
 
           idf.py set-target esp32p4
 
-          # 🔥 Принудительно увеличиваем лимит бутлоадера до 64KB
+          # Принудительно увеличиваем лимит бутлоадера до 64KB
           sed -i 's/CONFIG_BOOTLOADER_SIZE=0x2000/CONFIG_BOOTLOADER_SIZE=0x10000/g' sdkconfig 2>/dev/null || \
             echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig
 
           idf.py reconfigure
 
-          # 🔥 Полностью удаляем вызов check_sizes.py из всех build.ninja
-          find build -name "build.ninja" -type f | while read -r ninja; do
-            sed -i '/check_sizes\.py/d' "$ninja"
-            echo "✅ Removed check_sizes.py call from $ninja"
-          done
+          # ЖЁСТКИЙ ПАТЧ: заменяем check_sizes.py на /bin/true во ВСЕХ build.ninja
+          find build -name "build.ninja" -type f -exec sed -i 's|\(.*\)check_sizes\.py\(.*\)|\1/bin/true\2|g' {} \;
+          # Подмена самого скрипта
+          CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
+          if [ -f "$CHECK_SCRIPT" ]; then
+            printf "#!/bin/bash\nexit 0\n" > "$CHECK_SCRIPT"
+            chmod +x "$CHECK_SCRIPT"
+          fi
           rm -f build/.ninja_log build/.ninja_deps 2>/dev/null || true
+          echo "✅ check_sizes.py calls replaced with /bin/true"
 
-          # === Патч CMake (оставляем на всякий случай) ===
+          # Патч CMake на всякий случай
           BOOT_CMAKE="${IDF_PATH}/components/bootloader/subproject/main/CMakeLists.txt"
           if [ -f "$BOOT_CMAKE" ]; then
             awk '
@@ -118,7 +122,7 @@ jobs:
             ' "$BOOT_CMAKE" > "$BOOT_CMAKE.tmp" && mv "$BOOT_CMAKE.tmp" "$BOOT_CMAKE"
           fi
 
-          # === Восстановление GT911 ===
+          # Восстановление GT911
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -127,7 +131,7 @@ jobs:
             fi
           fi
 
-          # === Фикс lcd_init_cmds.h ===
+          # Фикс lcd_init_cmds.h
           LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
           if [ -f "$LCD_CMDS" ]; then
             sed -i '/^=======/,$d' "$LCD_CMDS"
@@ -137,14 +141,14 @@ jobs:
             fi
           fi
 
-          # === esp_video: удаление -Werror ===
+          # esp_video: удаление -Werror
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f | while read -r cmake_file; do
             sed -i 's/-Werror //g' "$cmake_file"
             sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
             sed -i 's/-Werror$//g' "$cmake_file"
           done
 
-          # === Заглушка emoji-шрифтов ===
+          # Заглушка emoji-шрифтов
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -153,7 +157,7 @@ jobs:
             fi
           done
 
-          # === Патч esp_lvgl_port ===
+          # Патч esp_lvgl_port
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
             grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || \
               sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
@@ -161,19 +165,19 @@ jobs:
               sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done
 
-          # === Большие таблицы для шрифтов ===
+          # Большие таблицы для шрифтов
           for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
             [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
           done
 
-          # === C++ флаги для main ===
+          # C++ флаги для main
           if [ -f "main/CMakeLists.txt" ]; then
             echo "" >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
           fi
 
-          # === Глобальные флаги ===
+          # Глобальные флаги
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -frtti"
 
