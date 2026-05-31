@@ -100,10 +100,6 @@ jobs:
           # 🔥 КРИТИЧЕСКИЙ ХАК: подмена check_sizes.py
           CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
           if [ -f "$CHECK_SCRIPT" ]; then
-            python3 -c "
-          # 🔥 КРИТИЧЕСКИЙ ХАК: подмена check_sizes.py
-          CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
-          if [ -f "$CHECK_SCRIPT" ]; then
             echo "#!/usr/bin/env python3" > "$CHECK_SCRIPT"
             echo "import sys" >> "$CHECK_SCRIPT"
             echo "sys.exit(0)" >> "$CHECK_SCRIPT"
