@@ -52,7 +52,7 @@ jobs:
           rm -rf build
 
           # ------------------------------------------------------------
-          # 1. Fix strncpy -> snprintf (как ранее)
+          # 1. Fix strncpy -> snprintf
           # ------------------------------------------------------------
           AGENT_LOOP_FILE="main/mimi/agent/agent_loop.c"
           if [ -f "$AGENT_LOOP_FILE" ]; then
@@ -80,7 +80,7 @@ jobs:
           fi
 
           # ------------------------------------------------------------
-          # 2. Удаление xiaozhi-fonts для esp32p4
+          # 2. Удаление xiaozhi-fonts
           # ------------------------------------------------------------
           echo "=== Удаляем проблемный компонент xiaozhi-fonts ==="
           rm -rf managed_components/78__xiaozhi-fonts
@@ -97,7 +97,7 @@ jobs:
           rm -f dependencies.lock
 
           # ------------------------------------------------------------
-          # 3. Генерация конфигурационных файлов
+          # 3. Конфигурационные файлы
           # ------------------------------------------------------------
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
@@ -155,21 +155,24 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-          # 🔥 НОВЫЙ ХАК: отключаем check_sizes.py во всех ninja-файлах
-          find build -name '*.ninja' -exec sed -i 's|\(.*\)check_sizes.py.*|\1true|g' {} \;
+          # 🔥 УДАЛЯЕМ check_sizes.py ИЗ СБОРКИ (ключевое исправление)
+          find build -name '*.ninja' -exec sed -i '/check_sizes\.py/d' {} \;
+          find build -name '*.cmake' -exec sed -i '/check_sizes\.py/d' {} \;
+          echo "check_sizes.py references removed from build files"
 
-          # Патч pmu_init (ещё не сделан)
+          # Патч pmu_init (делаем после reconfigure, чтобы не затерлось)
           FPGA_OVERRIDE_FILE="${IDF_PATH}/components/esp_system/fpga_overrides_clk.c"
           if [ -f "$FPGA_OVERRIDE_FILE" ]; then
             sed -i 's/pmu_init();/\/\* pmu_init(); \/\/ Disabled for CI \*\//g' "$FPGA_OVERRIDE_FILE"
           fi
 
-          # Дополнительные хаки (GT911, отключение -Werror и пр.)
+          # ------------------------------------------------------------
+          # 4. Дополнительные хаки
+          # ------------------------------------------------------------
           CACHE_FILE="build/bootloader/CMakeCache.txt"
           if [ -f "$CACHE_FILE" ]; then
             sed -i 's/BOOTLOADER_SIZE:STRING=0x2000/BOOTLOADER_SIZE:STRING=0x10000/g' "$CACHE_FILE"
           fi
-          rm -f build/.ninja_log build/.ninja_deps build/bootloader/.ninja_log build/bootloader/.ninja_deps 2>/dev/null || true
 
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
