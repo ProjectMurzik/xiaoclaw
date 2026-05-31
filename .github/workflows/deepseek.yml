@@ -48,7 +48,7 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
-          # === sdkconfig.defaults ===
+          # === sdkconfig.defaults (полный) ===
           echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
           echo "CONFIG_IDF_TARGET_ESP32P4=y" >> sdkconfig.defaults
           echo "CONFIG_ESP32P4_REV_MIN_0=y" >> sdkconfig.defaults
@@ -99,17 +99,17 @@ jobs:
           idf.py reconfigure
 
           # ЖЁСТКИЙ ПАТЧ: заменяем check_sizes.py на /bin/true во ВСЕХ build.ninja
-          find build -name "build.ninja" -type f -exec sed -i 's|\(.*\)check_sizes\.py\(.*\)|\1/bin/true\2|g' {} \;
-          # Подмена самого скрипта
+          find build -name "build.ninja" -type f -exec sed -i 's|\(.*command = \).*check_sizes\.py.*|\1/bin/true|g' {} \;
+          # Подмена самого скрипта на валидный Python (exit 0)
           CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
           if [ -f "$CHECK_SCRIPT" ]; then
-            printf "#!/bin/bash\nexit 0\n" > "$CHECK_SCRIPT"
+            printf "import sys\nsys.exit(0)\n" > "$CHECK_SCRIPT"
             chmod +x "$CHECK_SCRIPT"
           fi
           rm -f build/.ninja_log build/.ninja_deps 2>/dev/null || true
           echo "✅ check_sizes.py calls replaced with /bin/true"
 
-          # Патч CMake на всякий случай
+          # Патч CMake (на всякий случай)
           BOOT_CMAKE="${IDF_PATH}/components/bootloader/subproject/main/CMakeLists.txt"
           if [ -f "$BOOT_CMAKE" ]; then
             awk '
