@@ -48,11 +48,6 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
-          # Копируем существующий sdkconfig.defaults из репозитория
-          if [ -f "sdkconfig.defaults" ]; then
-            cp sdkconfig.defaults sdkconfig.defaults.bak
-          fi
-
           echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
           echo "CONFIG_IDF_TARGET_ESP32P4=y" >> sdkconfig.defaults
           echo "CONFIG_ESP32P4_REV_MIN_0=y" >> sdkconfig.defaults
@@ -139,6 +134,8 @@ jobs:
             grep -q "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file" || \
               sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done 2>/dev/null || true
+
+          # Удалён блок LV_FONT_FMT_TXT_LARGE fix
 
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=stringop-truncation"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=stringop-truncation -fpermissive -frtti"
