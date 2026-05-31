@@ -38,7 +38,21 @@ jobs:
           fi
           cd esp-idf
           ./install.sh esp32p4
-
+      - name: Patch ESP-IDF esptool_py CMake defaults
+        run: |
+          # 🔥 Сначала экспортируем переменные окружения, чтобы $IDF_PATH был доступен
+          . ./esp-idf/export.sh
+          
+          # Меняем хардкод BOOTLOADER_SIZE в исходниках фреймворка
+          CMAKE_FILE="${IDF_PATH}/components/esptool_py/CMakeLists.txt"
+          if [ -f "$CMAKE_FILE" ]; then
+            # Находим строку с set(BOOTLOADER_SIZE "0x2000") и меняем на 0x10000
+            sed -i 's/set(BOOTLOADER_SIZE "0x2000")/set(BOOTLOADER_SIZE "0x10000")/g' "$CMAKE_FILE"
+            sed -i 's/set(BOOTLOADER_SIZE 0x2000)/set(BOOTLOADER_SIZE 0x10000)/g' "$CMAKE_FILE"
+            echo "✅ Patched esptool_py CMake defaults: BOOTLOADER_SIZE=0x10000"
+          else
+            echo "⚠️ CMake file not found at $CMAKE_FILE"
+          fi
       - name: Configure & Build
         run: |
           . ./esp-idf/export.sh
