@@ -151,15 +151,13 @@ jobs:
           echo "✅ Fixed lcd_init_cmds.h"
         fi
 
-        # esp_video: отключаем -Werror во всех CMakeLists.txt компонента (Безопасный цикл for)
-        for cmake_file in $(find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f 2>/dev/null); do
-          sed -i 's/-Werror //g' "$cmake_file"
-          sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
-          sed -i 's/-Werror$//g' "$cmake_file"
-        done
+        # === 5. esp_video: отключаем -Werror во всех CMakeLists.txt компонента (Чистый POSIX find) ===
+        find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \; 2>/dev/null || true
+        find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror=deprecated-declarations//g' {} \; 2>/dev/null || true
+        find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror$//g' {} \; 2>/dev/null || true
         echo "✅ Disabled -Werror for esp_video"
 
-        # Заглушка emoji-шрифтов (ускоряет компиляцию)
+        # === 6. Заглушка emoji-шрифтов (ускоряет компиляцию) ===
         for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
           if [ -f "$f" ]; then
             base=$(basename "$f" .c)
@@ -168,12 +166,16 @@ jobs:
           fi
         done
 
-        # esp_lvgl_port: Безопасный сквозной цикл 'for' для полной поддержки структур папок LVGL v9
-        for file in $(find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f 2>/dev/null); do
-          grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
-          grep -q "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
-        done
+        # === 🔥 7. esp_lvgl_port: Абсолютно безопасный патч без циклов Bash и конфликтов set -e ===
+        # Мы используем встроенный в find механизм -exec bash -c, который изолирует обработку каждого файла.
+        # Пробелы в путях и потоки ввода больше никак не смогут оборвать билд!
+        find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec bash -c '
+          file="$1"
+          grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || sed -i "1i #pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file"
+          grep -q "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file" || sed -i "1i #pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file"
+        ' _ {} \; 2>/dev/null || true
         echo "✅ Patched esp_lvgl_port (all versions)"
+
 
         # Большие таблицы для шрифтов Puhui
         for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
