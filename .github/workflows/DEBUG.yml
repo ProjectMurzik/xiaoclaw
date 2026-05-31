@@ -1,0 +1,179 @@
+name: ESP32-P4 Firmware Build (DEBUG)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Enable Debug Mode
+        run: |
+          echo "ACTIONS_RUNNER_DEBUG=true" >> $GITHUB_ENV
+          echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
+          echo "IDF_CI_BUILD=1" >> $GITHUB_ENV
+          echo "CI=1" >> $GITHUB_ENV
+          echo "PYTHONDONTWRITEBYTECODE=1" >> $GITHUB_ENV
+          echo "PYTHONVERBOSE=1" >> $GITHUB_ENV
+          echo "Enabled full debug mode"
+
+      - name: Cache ESP-IDF and Components
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.espressif
+            managed_components
+          key: ${{ runner.os }}-esp-idf-v5.5.13-${{ hashFiles('main/idf_component.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-esp-idf-v5.5.13-
+
+      - name: Setup ESP-IDF v5.5
+        run: |
+          set -x  # Включаем bash debug
+          if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
+            rm -rf esp-idf
+            git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
+            cd esp-idf
+            git submodule update --init --recursive
+            cd ..
+          fi
+          cd esp-idf
+          ./install.sh esp32p4
+
+      - name: Configure Project
+        run: |
+          set -x  # Включаем bash debug
+          . ./esp-idf/export.sh
+          
+          rm -f sdkconfig sdkconfig.old sdkconfig.defaults
+          rm -f dependencies.lock
+          rm -rf build
+
+          echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
+          echo "CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y" >> sdkconfig.defaults
+          echo "CONFIG_SPIRAM=y" >> sdkconfig.defaults
+          echo "CONFIG_PARTITION_TABLE_CUSTOM=y" >> sdkconfig.defaults
+          echo "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=partitions.csv" >> sdkconfig.defaults
+          echo "CONFIG_PARTITION_TABLE_OFFSET=0x10000" >> sdkconfig.defaults
+          echo "CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y" >> sdkconfig.defaults
+          echo "CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y" >> sdkconfig.defaults
+          echo "CONFIG_COMPILER_OPTIMIZATION_PERF=y" >> sdkconfig.defaults
+          echo "CONFIG_COMPILER_CXX_RTTI=y" >> sdkconfig.defaults
+          echo "CONFIG_COMPILER_CXX_EXCEPTIONS=y" >> sdkconfig.defaults
+          echo "CONFIG_SECURE_BOOT=n" >> sdkconfig.defaults
+          echo "CONFIG_SECURE_FLASH_ENC_ENABLED=n" >> sdkconfig.defaults
+
+          idf.py set-target esp32p4
+          idf.py reconfigure
+
+      - name: Apply Component Fixes
+        run: |
+          set -x  # Включаем bash debug
+          FONTS_DIR="managed_components/78__xiaozhi-fonts"
+          if [ -d "$FONTS_DIR" ]; then
+            find "$FONTS_DIR" -type f \( -name "*.c" -o -name "*.h" \) | while read -r f; do
+              grep -q "^#define LV_FONT_FMT_TXT_LARGE" "$f" 2>/dev/null || sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
+            done
+          fi
+
+          GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
+          if [ -f "$GT911_H" ]; then
+            if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
+              rm -f "$GT911_H"
+              curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || true
+            fi
+          fi
+
+          find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror\(\s\|=\|$\)//g' {} +
+          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
+            grep -q "Wmaybe-uninitialized" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
+            grep -q "Wdeprecated-declarations" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
+          done
+
+          if [ -f "main/CMakeLists.txt" ]; then
+            echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
+            echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -Wno-error=overflow)' >> main/CMakeLists.txt
+          fi
+
+      - name: Build with Full Debug
+        run: |
+          set -x  # Включаем bash debug
+          . ./esp-idf/export.sh
+          
+          export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -Wno-error=overflow"
+          export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -Wno-error=overflow -fpermissive -frtti"
+          
+          echo "=== Starting build with full debug ==="
+          echo "Python version:"
+          python3 --version
+          echo "Ninja version:"
+          ninja --version
+          
+          cd build
+          
+          # Запускаем ninja с verbose и explain mode
+          echo "=== Running ninja with -v (verbose) ==="
+          ninja -v || {
+            EXIT_CODE=$?
+            echo "=== Ninja failed with exit code $EXIT_CODE ==="
+            echo "=== Checking check_sizes.py directly ==="
+            
+            # Запускаем check_sizes.py вручную с полным дебагом
+            python3 -v /home/runner/work/xiaoclaw/xiaoclaw/esp-idf/components/partition_table/check_sizes.py \
+              --offset 0x10000 \
+              bootloader 0x2000 \
+              /home/runner/work/xiaoclaw/xiaoclaw/build/bootloader/bootloader.bin || {
+              PYTHON_EXIT=$?
+              echo "=== check_sizes.py failed with exit code $PYTHON_EXIT ==="
+              echo "=== Running with strace to see system calls ==="
+              strace -f -e trace=process python3 /home/runner/work/xiaoclaw/xiaoclaw/esp-idf/components/partition_table/check_sizes.py \
+                --offset 0x10000 \
+                bootloader 0x2000 \
+                /home/runner/work/xiaoclaw/xiaoclaw/build/bootloader/bootloader.bin 2>&1 | tail -100
+            }
+            exit $EXIT_CODE
+          }
+
+      - name: Upload Debug Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-logs
+          path: |
+            build/log/
+            build/bootloader/log/
+          retention-days: 7
+
+      - name: Verify Build Artifacts
+        if: success()
+        run: |
+          for artifact in build/bootloader/bootloader.bin build/partition_table/partition-table.bin build/xiaoclaw.bin build/xiaoclaw.elf; do
+            if [ -f "$artifact" ]; then
+              SIZE=$(stat -c%s "$artifact" 2>/dev/null || stat -f%z "$artifact" 2>/dev/null || echo "?")
+              echo "✅ $artifact exists ($SIZE bytes)"
+            else
+              echo "❌ MISSING $artifact"
+            fi
+          done
+
+      - name: Upload Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: murzik-esp32p4-firmware
+          path: |
+            build/*.bin
+            build/bootloader/*.bin
+            build/partition_table/*.bin
+            build/*.elf
+          retention-days: 7
