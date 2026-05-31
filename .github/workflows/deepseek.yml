@@ -161,23 +161,3 @@ jobs:
 
           echo ">>> Starting idf.py build..."
           idf.py build
-
-      - name: Analyze Binary Size
-        if: success()
-        run: |
-          . ./esp-idf/export.sh
-          echo "Component Sizes"
-          idf.py size-components
-          echo "Memory Map"
-          idf.py size
-
-      - name: Upload Artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: murzik-esp32p4-firmware
-          path: |
-            build/*.bin
-            build/bootloader/*.bin
-            build/partition_table/*.bin
-          retention-days: 7
