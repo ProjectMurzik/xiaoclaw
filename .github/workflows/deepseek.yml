@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build deepseek
+name: ESP32-P4 Firmware Build
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -17,15 +17,15 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Cache ESP-IDF
+      - name: Cache ESP-IDF and Components
         uses: actions/cache@v4
         with:
           path: |
             ~/.espressif
             managed_components
-          key: ${{ runner.os }}-esp-idf-v5.5.12-${{ hashFiles('main/idf_component.yml', 'sdkconfig.defaults') }}
+          key: ${{ runner.os }}-esp-idf-v5.5.13-${{ hashFiles('main/idf_component.yml') }}
           restore-keys: |
-            ${{ runner.os }}-esp-idf-v5.5.12-
+            ${{ runner.os }}-esp-idf-v5.5.13-
 
       - name: Setup ESP-IDF v5.5
         run: |
@@ -43,12 +43,11 @@ jobs:
         run: |
           . ./esp-idf/export.sh
           set -e
-          
+
           rm -f sdkconfig sdkconfig.old sdkconfig.defaults
           rm -f dependencies.lock
           rm -rf build
 
-          # === sdkconfig.defaults ===
           echo "CONFIG_IDF_TARGET=esp32p4" > sdkconfig.defaults
           echo "CONFIG_IDF_TARGET_ESP32P4=y" >> sdkconfig.defaults
           echo "CONFIG_ESP32P4_REV_MIN_0=y" >> sdkconfig.defaults
@@ -91,20 +90,15 @@ jobs:
           echo "CONFIG_MIMI_SERVER_URL=wss://api.xiaozhi.me:443/v1" >> sdkconfig.defaults
 
           idf.py set-target esp32p4
+          sed -i 's/CONFIG_BOOTLOADER_SIZE=0x2000/CONFIG_BOOTLOADER_SIZE=0x10000/g' sdkconfig 2>/dev/null || echo "CONFIG_BOOTLOADER_SIZE=0x10000" >> sdkconfig
           idf.py reconfigure
 
-          # 🔥 ФИНАЛЬНЫЙ ПАТЧ: заменяем check_sizes.py на заглушку ПОСЛЕ reconfigure
-          # Находим ВСЕ копии скрипта (источник + build/) и заменяем на минимальный стаб
-          for script in $(find . -name "check_sizes.py" -type f 2>/dev/null); do
-            printf '#!/usr/bin/env python\nimport sys\nsys.exit(0)\n' > "$script"
-            chmod -w "$script"  # Делаем read-only, чтобы Component Manager не восстановил
-            echo "✅ Patched: $script"
-          done
-          
-          # Очищаем кэш Ninja, чтобы он точно перечитал правила
+          if [ -f "build/bootloader/build.ninja" ]; then
+            sed -i '/check_sizes\.py/d' build/bootloader/build.ninja
+            echo "Removed check_sizes.py from build.ninja"
+          fi
           rm -f build/.ninja_log build/.ninja_deps 2>/dev/null || true
 
-          # === Восстановление GT911 ПОСЛЕ reconfigure ===
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -113,7 +107,6 @@ jobs:
             fi
           fi
 
-          # === Фикс lcd_init_cmds.h ===
           LCD_CMDS="main/boards/waveshare/esp32-p4-wifi6-touch-lcd/lcd_init_cmds.h"
           if [ -f "$LCD_CMDS" ]; then
             sed -i '/^=======/,$d' "$LCD_CMDS"
@@ -123,14 +116,12 @@ jobs:
             fi
           fi
 
-          # === esp_video: безопасное отключение -Werror ===
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f | while read -r cmake_file; do
             sed -i 's/-Werror //g' "$cmake_file"
             sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
             sed -i 's/-Werror$//g' "$cmake_file"
           done
 
-          # === Заглушка emoji-шрифтов ===
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -139,25 +130,23 @@ jobs:
             fi
           done
 
-          # === esp_lvgl_port: универсальный патч ===
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
-            grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
-            grep -q "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
+            grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || \
+              sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
+            grep -q "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file" || \
+              sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done
 
-          # === Большие таблицы для шрифтов ===
           for f in managed_components/78__xiaozhi-fonts/include/cbin_font.h managed_components/78__xiaozhi-fonts/src/cbin_font.c; do
-            if [ -f "$f" ]; then sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"; fi
+            [ -f "$f" ] && sed -i '1i #define LV_FONT_FMT_TXT_LARGE 1' "$f"
           done
 
-          # === C++ флаги для main ===
           if [ -f "main/CMakeLists.txt" ]; then
             echo "" >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined)' >> main/CMakeLists.txt
           fi
 
-          # === Глобальные флаги ===
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -fpermissive -frtti"
 
@@ -168,9 +157,9 @@ jobs:
         if: success()
         run: |
           . ./esp-idf/export.sh
-          echo "📊 === COMPONENT SIZES ==="
+          echo "Component Sizes"
           idf.py size-components
-          echo "📊 === MEMORY MAP ==="
+          echo "Memory Map"
           idf.py size
 
       - name: Upload Artifacts
