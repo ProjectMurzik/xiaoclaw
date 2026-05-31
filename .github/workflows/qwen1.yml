@@ -17,6 +17,14 @@ jobs:
         with:
           submodules: 'recursive'
 
+      - name: Enable Debug Mode
+        run: |
+          echo "ACTIONS_RUNNER_DEBUG=true" >> $GITHUB_ENV
+          echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
+          echo "IDF_CI_BUILD=1" >> $GITHUB_ENV
+          echo "CI=1" >> $GITHUB_ENV
+          echo "PYTHONDONTWRITEBYTECODE=1" >> $GITHUB_ENV
+
       - name: Cache ESP-IDF
         uses: actions/cache@v4
         with:
@@ -27,6 +35,7 @@ jobs:
 
       - name: Setup ESP-IDF v5.5
         run: |
+          set -x
           if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
             rm -rf esp-idf
             git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
@@ -37,119 +46,90 @@ jobs:
           cd esp-idf
           ./install.sh esp32p4
 
-      - name: Replace check_sizes.py with Stub (BEFORE Configure)
-        run: |
-          . ./esp-idf/export.sh
-          export PYTHONDONTWRITEBYTECODE=1
-
-          CHECK_SIZES="${IDF_PATH}/components/partition_table/check_sizes.py"
-
-          # Создаём stub с помощью printf (без heredoc, без python -c)
-          printf '%s\n' \
-            '#!/usr/bin/env python3' \
-            'import sys' \
-            'print("[STUB] check_sizes.py bypassed - always returns 0")' \
-            'sys.exit(0)' > "$CHECK_SIZES"
-
-          chmod +x "$CHECK_SIZES"
-
-          echo "=== Stubbed check_sizes.py ==="
-          cat "$CHECK_SIZES"
-          echo "================================"
-
-          # Удаляем ВСЕ кэши Python
-          find "${IDF_PATH}" -name "*.pyc" -delete 2>/dev/null || true
-          find "${IDF_PATH}" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-
-          echo "✅ Replaced check_sizes.py with stub and cleared all Python caches"
-
       - name: Configure Project
         run: |
+          set -x
           . ./esp-idf/export.sh
-          export PYTHONDONTWRITEBYTECODE=1
-
           rm -f sdkconfig sdkconfig.old sdkconfig.defaults
           rm -f dependencies.lock
           rm -rf build
-
           echo 'CONFIG_IDF_TARGET="esp32p4"' > sdkconfig.defaults
           echo 'CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y' >> sdkconfig.defaults
           echo 'CONFIG_SPIRAM=y' >> sdkconfig.defaults
           echo 'CONFIG_PARTITION_TABLE_CUSTOM=y' >> sdkconfig.defaults
-          echo 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"' >> sdkconfig.defaults
           echo 'CONFIG_PARTITION_TABLE_OFFSET=0x10000' >> sdkconfig.defaults
           echo 'CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y' >> sdkconfig.defaults
-          echo 'CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y' >> sdkconfig.defaults
-          echo 'CONFIG_COMPILER_OPTIMIZATION_PERF=y' >> sdkconfig.defaults
-          echo 'CONFIG_COMPILER_CXX_RTTI=y' >> sdkconfig.defaults
-          echo 'CONFIG_COMPILER_CXX_EXCEPTIONS=y' >> sdkconfig.defaults
-
           idf.py set-target esp32p4
           idf.py reconfigure
 
+      - name: Build Bootloader Only + Diagnose
+        run: |
+          set -x
+          . ./esp-idf/export.sh
+          
+          echo "=== Building bootloader only ==="
+          cd build
+          ninja bootloader.bin
+          
+          echo ""
+          echo "=== Bootloader binary info ==="
+          ls -lh bootloader/bootloader.bin
+          file bootloader/bootloader.bin
+          
+          echo ""
+          echo "=== Bootloader header hexdump (first 256 bytes) ==="
+          hexdump -C bootloader/bootloader.bin | head -16
+          
+          echo ""
+          echo "=== Running check_sizes.py manually with verbose ==="
+          python -v "${IDF_PATH}/components/partition_table/check_sizes.py" \
+            --offset 0x10000 \
+            bootloader 0x2000 \
+            bootloader/bootloader.bin || {
+            EXIT_CODE=$?
+            echo ""
+            echo "=== check_sizes.py FAILED with exit code $EXIT_CODE ==="
+            echo ""
+            echo "=== Trying to understand why ==="
+            echo "Checking if bootloader offset is correct..."
+            echo "Partition table offset: 0x10000 (64KB)"
+            echo "Bootloader offset: 0x2000 (8KB) - this is default for ESP32-P4"
+            echo "Available space: 0x10000 - 0x2000 = 0xE000 (56KB)"
+            echo "Bootloader size: $(stat -c%s bootloader/bootloader.bin) bytes"
+            exit $EXIT_CODE
+          }
+          
+          cd ..
+
       - name: Apply Component Fixes
         run: |
-          # Font fixes (используем printf вместо heredoc)
+          set -x
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
-              printf '#include "cbin_font.h"\n' > "$f"
-              printf '#ifndef LV_FONT_T_DEFINED\n' >> "$f"
-              printf 'typedef struct _lv_font_t lv_font_t;\n' >> "$f"
-              printf '#define LV_FONT_T_DEFINED\n' >> "$f"
-              printf '#endif\n' >> "$f"
-              printf 'lv_font_t* %s_init(void) { return NULL; }\n' "$base" >> "$f"
+              echo '#include "cbin_font.h"' > "$f"
+              echo '#ifndef LV_FONT_T_DEFINED' >> "$f"
+              echo 'typedef struct _lv_font_t lv_font_t;' >> "$f"
+              echo '#define LV_FONT_T_DEFINED' >> "$f"
+              echo '#endif' >> "$f"
+              echo "lv_font_t* ${base}_init(void) { return NULL; }" >> "$f"
             fi
           done
-
-          # GT911 fix
-          GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
-          if [ -f "$GT911_H" ]; then
-            if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
-              rm -f "$GT911_H"
-              curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || true
-            fi
-          fi
-
-          # Remove -Werror from components
+          
           find ./managed_components/espressif__esp_video -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror\(\s\|=\|$\)//g' {} +
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
             grep -q "Wmaybe-uninitialized" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
             grep -q "Wdeprecated-declarations" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done
 
-          # Add compile flags to main (используем printf вместо heredoc)
-          if [ -f "main/CMakeLists.txt" ]; then
-            printf 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)\n' >> main/CMakeLists.txt
-            printf 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -Wno-error=overflow)\n' >> main/CMakeLists.txt
-          fi
-
-      - name: Build with Ninja
+      - name: Full Build
         run: |
+          set -x
           . ./esp-idf/export.sh
-          export PYTHONDONTWRITEBYTECODE=1
           export CFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -Wno-error=overflow"
           export CXXFLAGS="-Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -Wno-error=overflow -fpermissive -frtti"
-
-          echo "Starting build..."
-          idf.py build
-
-      - name: Verify Build Artifacts
-        run: |
-          ARTIFACTS_OK=true
-          for artifact in build/bootloader/bootloader.bin build/partition_table/partition-table.bin build/xiaoclaw.bin build/xiaoclaw.elf; do
-            if [ -f "$artifact" ]; then
-              SIZE=$(stat -c%s "$artifact" 2>/dev/null || stat -f%z "$artifact" 2>/dev/null || echo "?")
-              echo "✅ $artifact exists ($SIZE bytes)"
-            else
-              echo "❌ MISSING $artifact"
-              ARTIFACTS_OK=false
-            fi
-          done
-          if [ "$ARTIFACTS_OK" = false ]; then
-            echo "Build failed - artifacts missing"
-            exit 1
-          fi
+          cd build
+          ninja -v
 
       - name: Upload Artifacts
         if: success()
