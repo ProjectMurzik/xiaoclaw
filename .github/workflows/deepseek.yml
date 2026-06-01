@@ -152,7 +152,7 @@ jobs:
           ASSETS_H="main/assets.h"
           if [ -f "$ASSETS_H" ]; then
             if ! grep -q "srmodel_list_t" "$ASSETS_H"; then
-              printf '%s\n' '#ifdef CONFIG_ESP_SR_ENABLE' '#else' 'typedef void srmodel_list_t;' '#endif' >> "$ASSETS_H"
+              printf '#ifdef CONFIG_ESP_SR_ENABLE\n#else\ntypedef void srmodel_list_t;\n#endif\n' >> "$ASSETS_H"
               echo "Patched assets.h with srmodel_list_t stub"
             fi
           fi
