@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build (Final)
+name: ESP32-P4 deepseek
 
 on:
   push:
@@ -143,6 +143,13 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
+          # 🔥 СОЗДАЁМ ЗАГЛУШКУ ДЛЯ model_path.h (ОТСУТСТВУЮЩИЙ ФАЙЛ)
+          echo '#ifndef MODEL_PATH_H' > main/model_path.h
+          echo '#define MODEL_PATH_H' >> main/model_path.h
+          echo '#define MODEL_PATH "/fatfs/model"' >> main/model_path.h
+          echo '#endif' >> main/model_path.h
+          echo "✅ Created model_path.h stub"
+
           # GT911 fix
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
