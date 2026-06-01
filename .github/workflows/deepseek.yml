@@ -143,14 +143,20 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          # 🔥 СОЗДАЁМ ЗАГЛУШКУ ДЛЯ model_path.h (ОТСУТСТВУЮЩИЙ ФАЙЛ)
           echo '#ifndef MODEL_PATH_H' > main/model_path.h
           echo '#define MODEL_PATH_H' >> main/model_path.h
           echo '#define MODEL_PATH "/fatfs/model"' >> main/model_path.h
           echo '#endif' >> main/model_path.h
-          echo "✅ Created model_path.h stub"
+          echo "Created model_path.h stub"
 
-          # GT911 fix
+          ASSETS_H="main/assets.h"
+          if [ -f "$ASSETS_H" ]; then
+            if ! grep -q "srmodel_list_t" "$ASSETS_H"; then
+              printf '%s\n' '#ifdef CONFIG_ESP_SR_ENABLE' '#else' 'typedef void srmodel_list_t;' '#endif' >> "$ASSETS_H"
+              echo "Patched assets.h with srmodel_list_t stub"
+            fi
+          fi
+
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -159,14 +165,12 @@ jobs:
             fi
           fi
 
-          # Remove -Werror from managed_components
           find ./managed_components -name "CMakeLists.txt" -type f | while read -r cmake_file; do
             sed -i 's/-Werror //g' "$cmake_file"
             sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
             sed -i 's/-Werror$//g' "$cmake_file"
           done 2>/dev/null || true
 
-          # Отключаем варнинги в esp_lvgl_port
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
             grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || \
               sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
@@ -174,7 +178,6 @@ jobs:
               sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done 2>/dev/null || true
 
-          # Fix emoji fonts (LVGL v9 compatibility)
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -187,7 +190,6 @@ jobs:
             fi
           done
 
-          # Удаляем проблемный флаг macro-redefined из main/CMakeLists.txt
           if [ -f "main/CMakeLists.txt" ]; then
             sed -i 's/-Wno-error=macro-redefined//g' main/CMakeLists.txt
             if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
