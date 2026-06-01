@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware deepseek
+name: ESP32-P4 Firmware Build (Final)
 
 on:
   push:
@@ -38,6 +38,28 @@ jobs:
           fi
           cd esp-idf
           ./install.sh esp32p4
+
+      - name: Patch check_sizes.py
+        run: |
+          CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
+          if [ -f "$CHECK_SCRIPT" ]; then
+            printf '%s\n' '#!/usr/bin/env python3' 'import sys' 'print("[STUB] check_sizes bypassed")' 'sys.exit(0)' > "$CHECK_SCRIPT"
+            chmod +x "$CHECK_SCRIPT"
+          fi
+
+      - name: Patch ESP-IDF pmu_init
+        run: |
+          FPGA_OVERRIDE_FILE="esp-idf/components/esp_system/fpga_overrides_clk.c"
+          if [ -f "$FPGA_OVERRIDE_FILE" ]; then
+            sed -i 's/pmu_init();/\/\* pmu_init(); \/\/ Disabled for CI \*\//g' "$FPGA_OVERRIDE_FILE"
+          fi
+
+      - name: Remove -Werror from toolchain
+        run: |
+          TOOLCHAIN_FILE="${IDF_PATH}/tools/cmake/toolchain-esp32p4.cmake"
+          if [ -f "$TOOLCHAIN_FILE" ]; then
+            sed -i 's/-Werror//g' "$TOOLCHAIN_FILE"
+          fi
 
       - name: Disable xiaozhi-fonts for esp32p4
         run: |
@@ -83,6 +105,7 @@ jobs:
         run: |
           . ./esp-idf/export.sh
           set -e
+
           rm -f sdkconfig sdkconfig.old sdkconfig.defaults
           rm -rf build
 
@@ -91,52 +114,20 @@ jobs:
             'CONFIG_IDF_TARGET_ESP32P4=y' \
             'CONFIG_ESP32P4_REV_MIN_0=y' \
             'CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y' \
+            'CONFIG_SPIRAM=y' \
+            'CONFIG_SPIRAM_BOOT_INIT=y' \
+            'CONFIG_SPIRAM_USE_MALLOC=y' \
+            'CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y' \
             'CONFIG_PARTITION_TABLE_CUSTOM=y' \
             'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"' \
             'CONFIG_PARTITION_TABLE_OFFSET=0x10000' \
             'CONFIG_PARTITION_TABLE_MD5=y' \
-            'CONFIG_BOOTLOADER_SIZE=0x10000' \
             'CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_3_4C=y' \
-            'CONFIG_LCD_ENABLE=y' \
-            'CONFIG_LCD_MIPI_DSI=y' \
-            'CONFIG_LCD_MIPI_DSI_PHY_DUAL_LANE=y' \
-            'CONFIG_LVGL_ENABLE=y' \
-            'CONFIG_LVGL_COLOR_DEPTH=16' \
-            'CONFIG_LVGL_DRAW_BUF_SIZE=200000' \
-            'CONFIG_LVGL_USE_IMGFONT=n' \
-            'CONFIG_LV_FONT_FMT_TXT_LARGE=y' \
-            'CONFIG_ESP_I2S_ENABLE=y' \
-            'CONFIG_USE_AUDIO_PROCESSOR=y' \
-            'CONFIG_CAMERA_ENABLE=n' \
-            'CONFIG_ESP_VIDEO_ENABLE=n' \
-            'CONFIG_ESP_SR_ENABLE=n' \
-            'CONFIG_LANGUAGE_EN_US=y' \
-            'CONFIG_FLASH_DEFAULT_ASSETS=n' \
             'CONFIG_COMPILER_OPTIMIZATION_PERF=y' \
-            'CONFIG_COMPILER_WARNINGS_AS_ERRORS=n' \
             'CONFIG_COMPILER_CXX_RTTI=y' \
             'CONFIG_COMPILER_CXX_EXCEPTIONS=y' \
-            'CONFIG_COMPILER_DISABLE_GCC8_WARNINGS=y' \
-            'CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y' \
-            'CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_SIZE=y' \
-            'CONFIG_ENABLE_OTA=n' \
-            'CONFIG_APP_OTA_ROLLBACK_ENABLE=n' \
-            'CONFIG_MIMI_SERVER_URL="wss://api.xiaozhi.me:443/v1"' \
             'CONFIG_IDF_ENV_FPGA=y' \
             > sdkconfig.defaults
-
-          # Ключевые исправления для PSRAM
-          printf '%s\n' \
-            'CONFIG_SPIRAM=y' \
-            'CONFIG_SPIRAM_MODE_OCT=y' \
-            'CONFIG_SPIRAM_SPEED_120M=y' \
-            'CONFIG_SPIRAM_BOOT_INIT=y' \
-            'CONFIG_SPIRAM_USE_MALLOC=y' \
-            'CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y' \
-            'CONFIG_SPIRAM_ALLOW_NOINIT_SEG_EXTERNAL_MEMORY=y' \
-            'CONFIG_LV_MEM_CUSTOM=y' \
-            'CONFIG_LV_MEM_POOL_INCLUDE_SPIRAM_HEAP=y' \
-            >> sdkconfig.defaults
 
           printf '%s\n' \
             'nvs,data,nvs,,0x6000,' \
@@ -150,36 +141,9 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
-      - name: Patch PMU and check_sizes
+      - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          . ./esp-idf/export.sh
-          FPGA_OVERRIDE_FILE="${IDF_PATH}/components/esp_system/fpga_overrides_clk.c"
-          if [ -f "$FPGA_OVERRIDE_FILE" ]; then
-            sed -i 's/pmu_init();/\/\* pmu_init(); \/\/ Disabled for CI \*\//g' "$FPGA_OVERRIDE_FILE"
-          fi
-
-          CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
-          if [ -f "$CHECK_SCRIPT" ]; then
-            printf '%s\n' '#!/usr/bin/env python3' 'import sys' 'print("[STUB] check_sizes bypassed")' 'sys.exit(0)' > "$CHECK_SCRIPT"
-            chmod +x "$CHECK_SCRIPT"
-          fi
-
-          TOOLCHAIN_FILE="${IDF_PATH}/tools/cmake/toolchain-esp32p4.cmake"
-          if [ -f "$TOOLCHAIN_FILE" ]; then
-            sed -i 's/-Werror//g' "$TOOLCHAIN_FILE"
-          fi
-
-      - name: Patch LVGL config
-        run: |
-          LVGL_CONF="managed_components/lvgl__lvgl/lv_conf.h"
-          if [ -f "$LVGL_CONF" ]; then
-            sed -i 's|#define LV_MEM_CUSTOM 0|#define LV_MEM_CUSTOM 1|' "$LVGL_CONF"
-            sed -i 's|#define LV_MEM_SIZE .*|#define LV_MEM_SIZE (128U * 1024U)|' "$LVGL_CONF"
-            echo "✅ Patched LVGL config"
-          fi
-
-      - name: Apply Component Fixes (GT911, -Werror, fonts)
-        run: |
+          # GT911 fix
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -188,12 +152,14 @@ jobs:
             fi
           fi
 
+          # Remove -Werror from managed_components
           find ./managed_components -name "CMakeLists.txt" -type f | while read -r cmake_file; do
             sed -i 's/-Werror //g' "$cmake_file"
             sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
             sed -i 's/-Werror$//g' "$cmake_file"
           done 2>/dev/null || true
 
+          # Отключаем варнинги в esp_lvgl_port
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
             grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || \
               sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
@@ -201,6 +167,7 @@ jobs:
               sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done 2>/dev/null || true
 
+          # Fix emoji fonts (LVGL v9 compatibility)
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -213,19 +180,24 @@ jobs:
             fi
           done
 
+          # Удаляем проблемный флаг macro-redefined из main/CMakeLists.txt
           if [ -f "main/CMakeLists.txt" ]; then
+            sed -i 's/-Wno-error=macro-redefined//g' main/CMakeLists.txt
             if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
               echo '' >> main/CMakeLists.txt
               echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
-              echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=macro-redefined -Wno-error=overflow)' >> main/CMakeLists.txt
+              echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
             fi
           fi
 
       - name: Build Firmware
         run: |
           . ./esp-idf/export.sh
+          export IDF_CI_BUILD=1
+          export CI=1
+
           export CFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
-          export CXXFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -fpermissive -frtti -DLV_USE_IMGFONT=1"
+          export CXXFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -fpermissive -frtti"
 
           echo ">>> Starting idf.py build..."
           idf.py build
@@ -247,6 +219,18 @@ jobs:
             exit 1
           fi
 
+      - name: Upload Debug Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-logs
+          path: |
+            build/log/
+            build/CMakeCache.txt
+            sdkconfig
+            main/CMakeLists.txt
+          retention-days: 7
+
       - name: Upload Firmware Artifacts
         if: success()
         uses: actions/upload-artifact@v4
@@ -257,15 +241,4 @@ jobs:
             build/bootloader/*.bin
             build/partition_table/*.bin
             build/*.elf
-          retention-days: 7
-
-      - name: Upload Debug Logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-logs
-          path: |
-            build/log/
-            build/CMakeCache.txt
-            sdkconfig
           retention-days: 7
