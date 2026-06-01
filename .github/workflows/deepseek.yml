@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build (Final)
+name: ESP32-P4 Firmware Build deepseek
 
 on:
   push:
