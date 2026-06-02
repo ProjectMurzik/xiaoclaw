@@ -101,6 +101,18 @@ jobs:
             sed -i 's|strncpy(s_first_class_tool_names\[s_first_class_tool_count\], local_name, sizeof(s_first_class_tool_names\[s_first_class_tool_count\]) - 1);|snprintf(s_first_class_tool_names[s_first_class_tool_count], sizeof(s_first_class_tool_names[s_first_class_tool_count]), "%s", local_name);|g' "$MCP_CLIENT_FILE"
           fi
 
+      - name: Create esp_afe_sr_models.h in esp-sr component
+        run: |
+          # Создаём заглушку в папке компонента esp-sr
+          mkdir -p managed_components/espressif__esp-sr/include
+          cat > managed_components/espressif__esp-sr/include/esp_afe_sr_models.h << 'EOF'
+          #ifndef ESP_AFE_SR_MODELS_H
+          #define ESP_AFE_SR_MODELS_H
+          typedef void srmodel_list_t;
+          #endif
+          EOF
+          echo "Created stub in managed_components/espressif__esp-sr/include/"
+
       - name: Configure Project
         run: |
           . ./esp-idf/export.sh
@@ -145,33 +157,6 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          # Восстанавливаем CMakeLists.txt из репозитория
-          git fetch origin main
-          git show origin/main:main/CMakeLists.txt > main/CMakeLists.txt
-          
-          echo "=== Restored CMakeLists.txt ==="
-          
-          # Создаём заглушку в папке компонента esp-sr
-          ESP_SR_INCLUDE="managed_components/espressif__esp-sr/include"
-          if [ -d "$ESP_SR_INCLUDE" ]; then
-            cat > "$ESP_SR_INCLUDE/esp_afe_sr_models.h" << 'EOF'
-          #ifndef ESP_AFE_SR_MODELS_H
-          #define ESP_AFE_SR_MODELS_H
-          typedef void srmodel_list_t;
-          #endif
-          EOF
-            echo "Created stub in $ESP_SR_INCLUDE"
-          else
-            mkdir -p main/include
-            cat > main/include/esp_afe_sr_models.h << 'EOF'
-          #ifndef ESP_AFE_SR_MODELS_H
-          #define ESP_AFE_SR_MODELS_H
-          typedef void srmodel_list_t;
-          #endif
-          EOF
-            echo "Created stub in main/include"
-          fi
-          
           printf '%s\n' '#ifndef MODEL_PATH_H' '#define MODEL_PATH_H' '#define MODEL_PATH "/fatfs/model"' '#endif' > main/model_path.h
           printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
           
