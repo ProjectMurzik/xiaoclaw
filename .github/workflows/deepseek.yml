@@ -136,7 +136,6 @@ jobs:
       - name: Apply Component Fixes
         run: |
           set -x
-          # model_path.h stub
           if [ ! -f main/model_path.h ]; then
             echo '#ifndef MODEL_PATH_H' > main/model_path.h
             echo '#define MODEL_PATH_H' >> main/model_path.h
@@ -144,7 +143,6 @@ jobs:
             echo '#endif' >> main/model_path.h
           fi
 
-          # assets.h fix
           ASSETS_H="main/assets.h"
           if [ -f "$ASSETS_H" ]; then
             sed -i '/srmodel_list_t/d' "$ASSETS_H"
@@ -156,10 +154,12 @@ jobs:
             mv main/assets.h.new "$ASSETS_H"
           fi
 
-          # afe_wake_word.h fix
           WAKE_WORD_H="main/audio/wake_words/afe_wake_word.h"
           if [ -f "$WAKE_WORD_H" ]; then
+            # Комментируем оба проблемных include
             sed -i 's|#include <esp_afe_sr_models.h>|// #include <esp_afe_sr_models.h>|g' "$WAKE_WORD_H"
+            sed -i 's|#include <esp_nsn_models.h>|// #include <esp_nsn_models.h>|g' "$WAKE_WORD_H"
+            echo "✅ Fixed afe_wake_word.h"
           fi
 
           # GT911 fix
@@ -176,7 +176,6 @@ jobs:
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
 
-          # Emoji fonts fix
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
