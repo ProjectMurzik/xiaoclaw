@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build qwen1
+name: ESP32-P4 Firmware Build
 
 on:
   push:
