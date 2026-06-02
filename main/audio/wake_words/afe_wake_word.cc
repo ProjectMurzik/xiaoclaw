@@ -2,7 +2,7 @@
 #include "audio_service.h"
 #include <esp_log.h>
 #include <sstream>
-
+#include <esp_srmodel.h>
 #define DETECTION_RUNNING_EVENT 1
 
 #define TAG "AfeWakeWord"
