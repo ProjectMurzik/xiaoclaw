@@ -158,16 +158,20 @@ jobs:
           if [ -f "$WAKE_WORD_H" ]; then
             sed -i 's|#include <esp_afe_sr_models.h>|// #include <esp_afe_sr_models.h>|g' "$WAKE_WORD_H"
             sed -i 's|#include <esp_nsn_models.h>|// #include <esp_nsn_models.h>|g' "$WAKE_WORD_H"
+            sed -i 's|#include <esp_wn_models.h>|// #include <esp_wn_models.h>|g' "$WAKE_WORD_H"
+            sed -i 's|#include <esp_vadn_models.h>|// #include <esp_vadn_models.h>|g' "$WAKE_WORD_H"
+            sed -i 's|#include <esp_wn_iface.h>|// #include <esp_wn_iface.h>|g' "$WAKE_WORD_H"
             echo "✅ Fixed afe_wake_word.h"
           fi
 
           CUSTOM_WAKE_WORD_H="main/audio/wake_words/custom_wake_word.h"
           if [ -f "$CUSTOM_WAKE_WORD_H" ]; then
             sed -i 's|#include <esp_mn_iface.h>|// #include <esp_mn_iface.h>|g' "$CUSTOM_WAKE_WORD_H"
+            sed -i 's|#include <esp_mn_models.h>|// #include <esp_mn_models.h>|g' "$CUSTOM_WAKE_WORD_H"
+            sed -i 's|#include <esp_wn_iface.h>|// #include <esp_wn_iface.h>|g' "$CUSTOM_WAKE_WORD_H"
             echo "✅ Fixed custom_wake_word.h"
           fi
 
-          # GT911 fix
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -176,7 +180,6 @@ jobs:
             fi
           fi
 
-          # Remove -Werror
           find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \;
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
