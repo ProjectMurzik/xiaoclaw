@@ -6,7 +6,6 @@
 #include <freertos/event_groups.h>
 
 #include <esp_afe_sr_models.h>
-#include <esp_nsn_models.h>
 #include <model_path.h>
 
 #include <deque>
