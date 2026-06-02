@@ -174,15 +174,12 @@ jobs:
       # ------------------------------------------------------------
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          # Правильное добавление main/include в INCLUDE_DIRS
-          sed -i 's|set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "mimi" "bridge")|set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "mimi" "bridge" "main/include")|g' main/CMakeLists.txt
-          
-          # Проверка
-          echo "=== INCLUDE_DIRS after fix ==="
-          grep 'set(INCLUDE_DIRS' main/CMakeLists.txt
+          # Добавляем main/include в include path (простой и надёжный способ)
+          echo 'target_include_directories(${COMPONENT_LIB} PRIVATE "main/include")' >> main/CMakeLists.txt
+          echo "=== Added include directory ==="
+          tail -3 main/CMakeLists.txt
           
           # Создаём заглушку для esp_afe_sr_models.h
-          mkdir -p main/include
           mkdir -p main/include/esp32p4
           cat > main/include/esp_afe_sr_models.h << 'EOF'
           #ifndef ESP_AFE_SR_MODELS_H
