@@ -145,19 +145,6 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          # Удаляем все неправильные строки с main/main/include
-          sed -i '/main\/main\/include/d' main/CMakeLists.txt
-          
-          # Добавляем правильный путь main/include в INCLUDE_DIRS
-          if grep -q '"main/include"' main/CMakeLists.txt; then
-            echo "main/include already in INCLUDE_DIRS"
-          else
-            sed -i 's|set(INCLUDE_DIRS \(.*\)")|set(INCLUDE_DIRS \1 "main/include")|g' main/CMakeLists.txt
-          fi
-          
-          echo "=== INCLUDE_DIRS after fix ==="
-          grep 'set(INCLUDE_DIRS' main/CMakeLists.txt
-          
           # Создаём заглушку для esp_afe_sr_models.h
           mkdir -p main/include/esp32p4
           cat > main/include/esp_afe_sr_models.h << 'EOF'
