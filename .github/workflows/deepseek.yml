@@ -101,6 +101,13 @@ jobs:
             sed -i 's|strncpy(s_first_class_tool_names\[s_first_class_tool_count\], local_name, sizeof(s_first_class_tool_names\[s_first_class_tool_count\]) - 1);|snprintf(s_first_class_tool_names[s_first_class_tool_count], sizeof(s_first_class_tool_names[s_first_class_tool_count]), "%s", local_name);|g' "$MCP_CLIENT_FILE"
           fi
 
+      - name: Fix unconditional include of afe_audio_processor.h
+        run: |
+          # Патчим audio_service.cc — добавляем условную компиляцию
+          sed -i '/#include "processors\/afe_audio_processor.h"/c\#ifdef CONFIG_USE_AUDIO_PROCESSOR\n#include "processors/afe_audio_processor.h"\n#endif' main/audio/audio_service.cc
+          echo "=== Patched audio_service.cc ==="
+          grep -A3 -B3 "afe_audio_processor" main/audio/audio_service.cc || echo "Patch applied (afe_audio_processor not found in file)"
+
       - name: Configure Project
         run: |
           . ./esp-idf/export.sh
