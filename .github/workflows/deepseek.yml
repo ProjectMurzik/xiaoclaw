@@ -145,6 +145,9 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
+          # Восстанавливаем исходный CMakeLists.txt
+          git checkout main/CMakeLists.txt
+          
           # Создаём заглушку для esp_afe_sr_models.h
           mkdir -p main/include/esp32p4
           cat > main/include/esp_afe_sr_models.h << 'EOF'
