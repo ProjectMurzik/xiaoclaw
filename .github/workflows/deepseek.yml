@@ -145,8 +145,16 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          # Восстанавливаем исходный CMakeLists.txt
-          git checkout main/CMakeLists.txt
+          # Безопасное добавление main/include в INCLUDE_DIRS
+          if ! grep -q '"main/include"' main/CMakeLists.txt; then
+            sed -i 's|set(INCLUDE_DIRS \(.*\)")|set(INCLUDE_DIRS \1 "main/include")|g' main/CMakeLists.txt
+            echo "Added main/include to INCLUDE_DIRS"
+          else
+            echo "main/include already in INCLUDE_DIRS"
+          fi
+          
+          echo "=== INCLUDE_DIRS after fix ==="
+          grep 'set(INCLUDE_DIRS' main/CMakeLists.txt
           
           # Создаём заглушку для esp_afe_sr_models.h
           mkdir -p main/include/esp32p4
@@ -198,8 +206,8 @@ jobs:
           export IDF_CI_BUILD=1
           export CI=1
 
-          export CFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -I${PWD}/main/include"
-          export CXXFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -fpermissive -frtti -I${PWD}/main/include"
+          export CFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion"
+          export CXXFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -fpermissive -frtti"
 
           echo ">>> Starting idf.py build..."
           idf.py build 2>&1 | tee build.log
