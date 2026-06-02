@@ -131,20 +131,28 @@ jobs:
           if [ -f "$GT911_H" ]; then
             if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
               rm -f "$GT911_H"
-              curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || true
+              curl -sS -o "$GT911_H" "https://githubusercontent.com" || true
             fi
           fi
 
-          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \;
-          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
-          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
-
-          for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
-            if [ -f "$f" ]; then
-              base=$(basename "$f" .c)
-              printf '%s\n' '#include "cbin_font.h"' '#ifndef LV_FONT_T_DEFINED' 'typedef struct _lv_font_t lv_font_t;' '#define LV_FONT_T_DEFINED' '#endif' "lv_font_t* ${base}_init(void) { return NULL; }" > "$f"
+          # Добавляем проверку: если папка managed_components существует, то выполняем фиксы
+          if [ -d "./managed_components" ]; then
+            find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \;
+            
+            # Проверяем конкретно папку lvgl_port перед запуском find
+            if [ -d "./managed_components/espressif__esp_lvgl_port" ]; then
+              find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
+              find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
             fi
-          done
+
+            for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
+              if [ -f "$f" ]; then
+                base=$(basename "$f" .c)
+                printf '%s\n' '#include "cbin_font.h"' '#ifndef LV_FONT_T_DEFINED' 'typedef struct _lv_font_t lv_font_t;' '#define LV_FONT_T_DEFINED' '#endif' "lv_font_t* ${base}_init(void) { return NULL; }" > "$f"
+              fi
+            done
+          fi
+
 
       - name: Build Project
         run: |
