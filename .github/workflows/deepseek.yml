@@ -188,7 +188,18 @@ jobs:
           export CXXFLAGS="-Wno-error -Wno-error=stringop-truncation -Wno-error=format-truncation -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -fpermissive -frtti"
 
           echo ">>> Starting idf.py build..."
-          idf.py build
+          idf.py build 2>&1 | tee build.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "========================================="
+            echo "Build failed with exit code: $BUILD_EXIT"
+            echo "========================================="
+            echo "Last 100 lines of build.log:"
+            tail -n 100 build.log
+            echo "========================================="
+            exit $BUILD_EXIT
+          fi
 
       - name: Verify Build Artifacts
         if: success()
@@ -196,9 +207,9 @@ jobs:
           ARTIFACTS_OK=true
           for artifact in build/bootloader/bootloader.bin build/partition_table/partition-table.bin build/xiaoclaw.bin build/xiaoclaw.elf; do
             if [ -f "$artifact" ]; then
-              echo "✅ $artifact exists"
+              echo "✓ $artifact exists"
             else
-              echo "❌ MISSING $artifact"
+              echo "✗ MISSING $artifact"
               ARTIFACTS_OK=false
             fi
           done
@@ -217,6 +228,7 @@ jobs:
             build/CMakeCache.txt
             sdkconfig
             main/CMakeLists.txt
+            build.log
           retention-days: 7
 
       - name: Upload Firmware Artifacts
