@@ -145,16 +145,7 @@ jobs:
         run: |
           printf '%s\n' '#ifndef MODEL_PATH_H' '#define MODEL_PATH_H' '#define MODEL_PATH "/fatfs/model"' '#endif' > main/model_path.h
 
-          if [ ! -f "main/assets.h" ]; then
-            printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
-          else
-            if ! grep -q "srmodel_list_t" main/assets.h; then
-              cp main/assets.h main/assets.h.bak
-              printf '%s\n' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' > main/assets.h
-              printf '\n' >> main/assets.h
-              cat main/assets.h.bak >> main/assets.h
-            fi
-          fi
+          printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
 
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
@@ -174,12 +165,7 @@ jobs:
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
-              echo '#include "cbin_font.h"' > "$f"
-              echo '#ifndef LV_FONT_T_DEFINED' >> "$f"
-              echo 'typedef struct _lv_font_t lv_font_t;' >> "$f"
-              echo '#define LV_FONT_T_DEFINED' >> "$f"
-              echo '#endif' >> "$f"
-              echo "lv_font_t* ${base}_init(void) { return NULL; }" >> "$f"
+              printf '%s\n' '#include "cbin_font.h"' '#ifndef LV_FONT_T_DEFINED' 'typedef struct _lv_font_t lv_font_t;' '#define LV_FONT_T_DEFINED' '#endif' "lv_font_t* ${base}_init(void) { return NULL; }" > "$f"
             fi
           done
 
