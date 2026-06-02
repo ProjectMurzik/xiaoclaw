@@ -191,6 +191,24 @@ jobs:
             fi
           done
 
+      - name: Fix API for ESP-SR v2.0
+        run: |
+          set -x
+          # Fix afe_wake_word.h - rename types
+          sed -i 's/esp_afe_sr_iface_t/esp_afe_iface_t/g' main/audio/wake_words/afe_wake_word.h
+          sed -i 's/esp_afe_sr_data_t/esp_afe_data_t/g' main/audio/wake_words/afe_wake_word.h
+          
+          # Fix custom_wake_word.h - replace with AFE interface
+          sed -i 's/esp_mn_iface_t\*/const esp_afe_iface_t\*/g' main/audio/wake_words/custom_wake_word.h
+          sed -i 's/model_iface_data_t\*/esp_afe_data_t\*/g' main/audio/wake_words/custom_wake_word.h
+          
+          # Fix audio_service.cc - replace SetModelsList function
+          sed -i '/esp_srmodel_filter/d' main/audio/audio_service.cc
+          sed -i 's/ESP_MN_PREFIX.*/models_list_ != nullptr/g' main/audio/audio_service.cc
+          sed -i 's/ESP_WN_PREFIX.*/models_list_ != nullptr/g' main/audio/audio_service.cc
+          
+          echo "✅ Fixed API for ESP-SR v2.0"
+
       - name: Build
         run: |
           set -x
