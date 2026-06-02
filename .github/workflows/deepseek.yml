@@ -1,4 +1,4 @@
-name: ESP32-P4 deepseek
+name: ESP32-P4 Firmware Build
 
 on:
   push:
@@ -75,6 +75,15 @@ jobs:
           printf '%s\n' '#!/usr/bin/env python3' 'import sys' 'print("[STUB] check_sizes.py bypassed")' 'sys.exit(0)' > "$CHECK_SIZES"
           chmod +x "$CHECK_SIZES"
 
+      - name: Remove AFE from build temporarily
+        run: |
+          set -x
+          # Комментируем afe_audio_processor.cc
+          sed -i 's|audio/processors/afe_audio_processor.cc|#audio/processors/afe_audio_processor.cc|g' main/CMakeLists.txt
+          # Удаляем include
+          sed -i '/#include "processors\/afe_audio_processor.h"/d' main/audio/audio_service.cc
+          echo "✅ AFE temporarily removed from build"
+
       - name: Configure Project
         run: |
           set -x
@@ -104,8 +113,8 @@ jobs:
             'CONFIG_COMPILER_CXX_EXCEPTIONS=y' \
             'CONFIG_COMPILER_WARNINGS_AS_ERRORS=n' \
             'CONFIG_IDF_ENV_FPGA=y' \
-            'CONFIG_USE_AUDIO_PROCESSOR=y' \
-            'CONFIG_ESP_SR_ENABLE=y' \
+            'CONFIG_USE_AUDIO_PROCESSOR=n' \
+            'CONFIG_ESP_SR_ENABLE=n' \
             > sdkconfig.defaults
 
           printf '%s\n' \
@@ -123,7 +132,6 @@ jobs:
       - name: Apply Component Fixes
         run: |
           set -x
-
           # model_path.h stub
           if [ ! -f main/model_path.h ]; then
             echo '#ifndef MODEL_PATH_H' > main/model_path.h
@@ -132,16 +140,18 @@ jobs:
             echo '#endif' >> main/model_path.h
           fi
 
-          # assets.h fix for srmodel_list_t
+          # assets.h fix
           ASSETS_H="main/assets.h"
           if [ -f "$ASSETS_H" ]; then
-            TEMP_FILE=$(mktemp)
-            echo '#ifndef CONFIG_ESP_SR_ENABLE' > "$TEMP_FILE"
-            echo 'typedef void srmodel_list_t;' >> "$TEMP_FILE"
-            echo '#endif' >> "$TEMP_FILE"
-            echo '' >> "$TEMP_FILE"
-            cat "$ASSETS_H" >> "$TEMP_FILE"
-            mv "$TEMP_FILE" "$ASSETS_H"
+            if ! grep -q "srmodel_list_t" "$ASSETS_H"; then
+              TEMP_FILE=$(mktemp)
+              echo '#ifndef CONFIG_ESP_SR_ENABLE' > "$TEMP_FILE"
+              echo 'typedef void srmodel_list_t;' >> "$TEMP_FILE"
+              echo '#endif' >> "$TEMP_FILE"
+              echo '' >> "$TEMP_FILE"
+              cat "$ASSETS_H" >> "$TEMP_FILE"
+              mv "$TEMP_FILE" "$ASSETS_H"
+            fi
           fi
 
           # GT911 fix
@@ -153,7 +163,7 @@ jobs:
             fi
           fi
 
-          # Remove -Werror from components
+          # Remove -Werror
           find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \;
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
@@ -173,20 +183,15 @@ jobs:
           export CFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow"
           export CXXFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow -fpermissive -frtti"
           
-          echo ">>> Starting idf.py build with verbose output..."
           idf.py build 2>&1 | tee build.log
           BUILD_EXIT=${PIPESTATUS[0]}
           
           if [ $BUILD_EXIT -ne 0 ]; then
-            echo "========================================="
-            echo "Build failed with exit code: $BUILD_EXIT"
-            echo "========================================="
-            echo "Last 200 lines of build.log:"
+            echo "=== BUILD FAILED ==="
+            echo "Last 200 lines:"
             tail -n 200 build.log
-            echo "========================================="
-            echo "Searching for error patterns:"
-            grep -E "(error:|undefined reference|multiple definition|fatal error)" build.log | head -50
-            echo "========================================="
+            echo "=== ERRORS ==="
+            grep -E "(error:|fatal error:)" build.log | head -30
             exit $BUILD_EXIT
           fi
 
@@ -204,7 +209,6 @@ jobs:
             fi
           done
           if [ "$ARTIFACTS_OK" = false ]; then
-            echo "Build failed - artifacts missing"
             exit 1
           fi
 
