@@ -24,7 +24,6 @@ jobs:
           echo "IDF_CI_BUILD=1" >> $GITHUB_ENV
           echo "CI=1" >> $GITHUB_ENV
           echo "PYTHONDONTWRITEBYTECODE=1" >> $GITHUB_ENV
-          echo "PYTHONFAULTHANDLER=1" >> $GITHUB_ENV
 
       - name: Cache ESP-IDF
         uses: actions/cache@v4
@@ -145,15 +144,31 @@ jobs:
             echo "✅ Created model_path.h stub"
           fi
 
-          # FIX 2: Fix srmodel_list_t undefined type in assets.h
+          # FIX 2: CRITICAL FIX for srmodel_list_t in assets.h
           ASSETS_H="main/assets.h"
           if [ -f "$ASSETS_H" ]; then
-            # Проверяем, есть ли уже определение srmodel_list_t
-            if ! grep -q "typedef.*srmodel_list_t" "$ASSETS_H" && ! grep -q "#include.*esp_srmodel.h" "$ASSETS_H"; then
-              # Добавляем условное определение перед использованием типа
-              # Находим строку с srmodel_list_t и добавляем guard перед ней
-              sed -i '/srmodel_list_t/i #ifdef CONFIG_ESP_SR_ENABLE\n#include "esp_srmodel.h"\n#else\ntypedef void srmodel_list_t;\n#endif' "$ASSETS_H"
-              echo "✅ Patched assets.h with srmodel_list_t definition"
+            # Проверяем, есть ли проблема (использование типа без определения)
+            if grep -q "srmodel_list_t" "$ASSETS_H"; then
+              # Создаем временный файл
+              TEMP_FILE=$(mktemp)
+              
+              # Добавляем определение типа в самое начало файла, перед любыми include
+              echo '#ifndef SRMODEL_LIST_T_DEF' > "$TEMP_FILE"
+              echo '#define SRMODEL_LIST_T_DEF' >> "$TEMP_FILE"
+              echo '#ifdef CONFIG_ESP_SR_ENABLE' >> "$TEMP_FILE"
+              echo '#include "esp_srmodel.h"' >> "$TEMP_FILE"
+              echo '#else' >> "$TEMP_FILE"
+              echo 'typedef void srmodel_list_t;' >> "$TEMP_FILE"
+              echo '#endif' >> "$TEMP_FILE"
+              echo '#endif' >> "$TEMP_FILE"
+              echo '' >> "$TEMP_FILE"
+              
+              # Добавляем оригинальное содержимое
+              cat "$ASSETS_H" >> "$TEMP_FILE"
+              
+              # Заменяем оригинал
+              mv "$TEMP_FILE" "$ASSETS_H"
+              echo "✅ Fixed srmodel_list_t definition in assets.h"
             fi
           fi
 
