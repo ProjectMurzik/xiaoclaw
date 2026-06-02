@@ -112,10 +112,10 @@ jobs:
             'storage,data,fat,,0xA00000,' \
             > partitions.csv
 
-          # Выполняем реконфигурацию проекта (выкачивание компонентов)
+          # Выполняем принудительную переконфигурацию таргета
           idf.py set-target esp32p4
+          idf.py fullclean
           idf.py reconfigure
-
 
       - name: Apply Component Fixes
         run: |
