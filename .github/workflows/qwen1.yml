@@ -210,7 +210,7 @@ jobs:
           # FIX 6: Main CMakeLists flags
           if [ -f "main/CMakeLists.txt" ]; then
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
-            echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow -Wno-macro-redefined)' >> main/CMakeLists.txt
+            echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
           fi
 
       - name: Build
@@ -219,26 +219,37 @@ jobs:
           . ./esp-idf/export.sh
           export CFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow"
           export CXXFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow -fpermissive -frtti"
-          # Запускаем с флагом -v для подробного вывода ошибок
-          idf.py build -v
-          
-          
-          # Запускаем сборку с максимальным выводом
-          # idf.py build -v может не передать -v в ninja корректно в некоторых версиях,
-          # поэтому лучше запустить ninja напрямую из папки build, если idf.py не помогает.
-          # Но сначала попробуем стандартный способ с перенаправлением вывода в файл для надежности.
-          idf.py build 2>&1 | tee /tmp/build_full_log.txt
-          
-          # Если предыдущая команда упала, код выхода будет не 0, и скрипт остановится.
-          # Если мы хотим продолжить и сохранить лог даже при ошибке, нужно немного усложнить логику,
-          # но для CI лучше сразу падать.
+          idf.py build
 
-      - name: Upload Full Build Log
-        if: failure()
+      - name: Verify Build Artifacts
+        if: success()
+        run: |
+          set -x
+          ARTIFACTS_OK=true
+          for artifact in build/bootloader/bootloader.bin build/partition_table/partition-table.bin build/xiaoclaw.bin build/xiaoclaw.elf; do
+            if [ -f "$artifact" ]; then
+              SIZE=$(stat -c%s "$artifact" 2>/dev/null || stat -f%z "$artifact" 2>/dev/null || echo "?")
+              echo "✅ $artifact exists ($SIZE bytes)"
+            else
+              echo "❌ MISSING $artifact"
+              ARTIFACTS_OK=false
+            fi
+          done
+          if [ "$ARTIFACTS_OK" = false ]; then
+            echo "Build failed - artifacts missing"
+            exit 1
+          fi
+
+      - name: Upload Artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: full-build-log
-          path: /tmp/build_full_log.txt
+          name: murzik-esp32p4-firmware
+          path: |
+            build/*.bin
+            build/bootloader/*.bin
+            build/partition_table/*.bin
+            build/*.elf
           retention-days: 7
 
       - name: Upload Debug Logs
