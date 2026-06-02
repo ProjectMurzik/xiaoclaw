@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware   qwen1
+name: ESP32-P4 Firmware qwen1
 
 on:
   push:
@@ -88,10 +88,6 @@ jobs:
           rm -f sdkconfig sdkconfig.old sdkconfig.defaults
           rm -f dependencies.lock
           rm -rf build
-
-          # Создаем отсутствующие директории, чтобы избежать ошибок CMake
-          mkdir -p main/include
-          mkdir -p main/main/include
 
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
@@ -211,13 +207,16 @@ jobs:
             grep -q "Wdeprecated-declarations" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done
 
-          # FIX 6: Main CMakeLists flags & Fix include paths
+          # FIX 6: Main CMakeLists flags & Include Paths
           if [ -f "main/CMakeLists.txt" ]; then
-            # Удаляем дублирующиеся пути include, если они есть
-            sed -i 's|${CMAKE_CURRENT_SOURCE_DIR}/main/include|${CMAKE_CURRENT_SOURCE_DIR}/include|g' main/CMakeLists.txt
-            
+            # Добавляем флаги компиляции
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
+            
+            # Явно добавляем пути к заголовкам esp-sr, чтобы гарантировать их видимость
+            echo 'target_include_directories(__idf_main PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/include)' >> main/CMakeLists.txt
+            echo 'target_include_directories(__idf_main PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/include/esp32p4)' >> main/CMakeLists.txt
+            echo 'target_include_directories(__idf_main PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/src/include)' >> main/CMakeLists.txt
           fi
 
       - name: Build
