@@ -955,11 +955,11 @@ idf_component_register(SRCS ${SOURCES}
                     WHOLE_ARCHIVE
                     REQUIRES
                         esp-sr       # <-- ПЕРЕНЕСЛИ СЮДА ДЛЯ ПУБЛИЧНОГО ДОСТУПА К ЗАГОЛОВКАМ
+                        esp_http_client
+                        esp_netif 
                     PRIV_REQUIRES
                         esp_pm
-                        esp_psram
-                        esp_netif
-                        esp_http_client
+                        esp_psram                      
                         esp_http_server
                         json
                         spiffs
