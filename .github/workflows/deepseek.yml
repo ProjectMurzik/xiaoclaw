@@ -1,4 +1,4 @@
-name: ESP32-P4 deepseek
+name: ESP32-P4 Firmware Build (AFE Fixed)
 
 on:
   push:
@@ -39,6 +39,9 @@ jobs:
           cd esp-idf
           ./install.sh esp32p4
 
+      # ------------------------------------------------------------
+      # БЛОК 1: Патчи самой ESP-IDF (pmu_init, check_sizes.py)
+      # ------------------------------------------------------------
       - name: Patch check_sizes.py
         run: |
           CHECK_SCRIPT="${IDF_PATH}/components/partition_table/check_sizes.py"
@@ -61,6 +64,9 @@ jobs:
             sed -i 's/-Werror//g' "$TOOLCHAIN_FILE"
           fi
 
+      # ------------------------------------------------------------
+      # БЛОК 2: Фиксы проекта (strncpy, шрифты, компоненты)
+      # ------------------------------------------------------------
       - name: Disable xiaozhi-fonts for esp32p4
         run: |
           YML_FILE="main/idf_component.yml"
@@ -76,6 +82,7 @@ jobs:
 
       - name: Fix strncpy in source files
         run: |
+          # agent_loop.c
           AGENT_LOOP_FILE="main/mimi/agent/agent_loop.c"
           if [ -f "$AGENT_LOOP_FILE" ]; then
             sed -i 's|strncpy(out\.chat_id, msg\.chat_id, sizeof(out\.chat_id) - 1);|snprintf(out.chat_id, sizeof(out.chat_id), "%s", msg.chat_id);|g' "$AGENT_LOOP_FILE"
@@ -83,7 +90,7 @@ jobs:
             sed -i 's|strncpy(status\.chat_id, msg\.chat_id, sizeof(status\.chat_id) - 1);|snprintf(status.chat_id, sizeof(status.chat_id), "%s", msg.chat_id);|g' "$AGENT_LOOP_FILE"
             sed -i 's|strncpy(status\.channel, msg\.channel, sizeof(status\.channel) - 1);|snprintf(status.channel, sizeof(status.channel), "%s", msg.channel);|g' "$AGENT_LOOP_FILE"
           fi
-
+          # tool_web_search.c
           WEB_SEARCH_FILE="main/mimi/tools/tool_web_search.c"
           if [ -f "$WEB_SEARCH_FILE" ]; then
             sed -i 's|strncpy(s_brave_key, MIMI_SECRET_SEARCH_KEY, sizeof(s_brave_key) - 1);|snprintf(s_brave_key, sizeof(s_brave_key), "%s", MIMI_SECRET_SEARCH_KEY);|g' "$WEB_SEARCH_FILE"
@@ -91,7 +98,7 @@ jobs:
             sed -i 's|strncpy(s_brave_key, tmp, sizeof(s_brave_key) - 1);|snprintf(s_brave_key, sizeof(s_brave_key), "%s", tmp);|g' "$WEB_SEARCH_FILE"
             sed -i 's|strncpy(s_tavily_key, tmp, sizeof(s_tavily_key) - 1);|snprintf(s_tavily_key, sizeof(s_tavily_key), "%s", tmp);|g' "$WEB_SEARCH_FILE"
           fi
-
+          # tool_mcp_client.c
           MCP_CLIENT_FILE="main/mimi/tools/tool_mcp_client.c"
           if [ -f "$MCP_CLIENT_FILE" ]; then
             sed -i 's|strncpy(cfg->name, line + 3, sizeof(cfg->name) - 1);|snprintf(cfg->name, sizeof(cfg->name), "%s", line + 3);|g' "$MCP_CLIENT_FILE"
@@ -101,6 +108,23 @@ jobs:
             sed -i 's|strncpy(s_first_class_tool_names\[s_first_class_tool_count\], local_name, sizeof(s_first_class_tool_names\[s_first_class_tool_count\]) - 1);|snprintf(s_first_class_tool_names[s_first_class_tool_count], sizeof(s_first_class_tool_names[s_first_class_tool_count]), "%s", local_name);|g' "$MCP_CLIENT_FILE"
           fi
 
+      # ------------------------------------------------------------
+      # БЛОК 3: КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ — правильный include для AFE на ESP32-P4
+      # ------------------------------------------------------------
+      - name: Fix AFE header path for ESP32-P4
+        run: |
+          AFE_HEADER_FILE="main/audio/processors/afe_audio_processor.h"
+          if [ -f "$AFE_HEADER_FILE" ]; then
+            # Меняем путь к заголовочному файлу для совместимости с esp-sr v2.x на P4
+            sed -i 's|#include <esp_afe_sr_models.h>|#include <esp32p4/esp_afe_sr_models.h>|g' "$AFE_HEADER_FILE"
+            echo "Patched $AFE_HEADER_FILE: changed include path to esp32p4/"
+          else
+            echo "Warning: $AFE_HEADER_FILE not found!"
+          fi
+
+      # ------------------------------------------------------------
+      # БЛОК 4: Конфигурация проекта (sdkconfig, partitions)
+      # ------------------------------------------------------------
       - name: Configure Project
         run: |
           . ./esp-idf/export.sh
@@ -109,6 +133,7 @@ jobs:
           rm -f sdkconfig sdkconfig.old sdkconfig.defaults
           rm -rf build
 
+          # Генерируем sdkconfig.defaults (AFE ВКЛЮЧЁН!)
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
             'CONFIG_IDF_TARGET_ESP32P4=y' \
@@ -127,11 +152,11 @@ jobs:
             'CONFIG_COMPILER_CXX_RTTI=y' \
             'CONFIG_COMPILER_CXX_EXCEPTIONS=y' \
             'CONFIG_IDF_ENV_FPGA=y' \
+            'CONFIG_USE_AUDIO_PROCESSOR=y' \
             'CONFIG_ESP_SR_ENABLE=y' \
-            'CONFIG_USE_AFE_WAKE_WORD=y' \
-            'CONFIG_SEND_WAKE_WORD_DATA=y' \
             > sdkconfig.defaults
 
+          # Генерируем partitions.csv (влазит в 32MB)
           printf '%s\n' \
             'nvs,data,nvs,,0x6000,' \
             'phy_init,data,phy,,0x1000,' \
@@ -144,12 +169,18 @@ jobs:
           idf.py set-target esp32p4
           idf.py reconfigure
 
+      # ------------------------------------------------------------
+      # БЛОК 5: Дополнительные фиксы компонентов (GT911, -Werror, эмодзи)
+      # ------------------------------------------------------------
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
+          # Заглушка для model_path.h
           printf '%s\n' '#ifndef MODEL_PATH_H' '#define MODEL_PATH_H' '#define MODEL_PATH "/fatfs/model"' '#endif' > main/model_path.h
 
+          # Заглушка для assets.h (srmodel_list_t)
           printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
 
+          # Обход проблемы GT911
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -158,13 +189,16 @@ jobs:
             fi
           fi
 
+          # Отключаем -Werror в managed_components
           find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \;
           find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror=deprecated-declarations//g' {} \;
           find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror$//g' {} \;
 
+          # Отключаем варнинги в esp_lvgl_port
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
 
+          # Фикс эмодзи-шрифтов для LVGL v9
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
@@ -172,6 +206,7 @@ jobs:
             fi
           done
 
+          # Глобальные опции компиляции для main компонента
           if [ -f "main/CMakeLists.txt" ]; then
             sed -i 's/-Wno-error=macro-redefined//g' main/CMakeLists.txt
             if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
@@ -181,6 +216,9 @@ jobs:
             fi
           fi
 
+      # ------------------------------------------------------------
+      # БЛОК 6: СБОРКА
+      # ------------------------------------------------------------
       - name: Build Firmware
         run: |
           . ./esp-idf/export.sh
@@ -204,6 +242,9 @@ jobs:
             exit $BUILD_EXIT
           fi
 
+      # ------------------------------------------------------------
+      # БЛОК 7: Проверка артефактов и загрузка
+      # ------------------------------------------------------------
       - name: Verify Build Artifacts
         if: success()
         run: |
