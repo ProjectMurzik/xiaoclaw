@@ -535,17 +535,10 @@ void AudioService::EncodeWakeWord() {
 }
 
 const std::string& AudioService::GetLastWakeWord() const {
-    static const std::string empty;
-    if (!wake_word_) {
-        return empty;
-    }
     return wake_word_->GetLastDetectedWakeWord();
 }
 
 std::unique_ptr<AudioStreamPacket> AudioService::PopWakeWordPacket() {
-    if (!wake_word_) {
-        return nullptr;
-    }
     auto packet = std::make_unique<AudioStreamPacket>();
     if (wake_word_->GetWakeWordOpus(packet->payload)) {
         return packet;
@@ -554,18 +547,12 @@ std::unique_ptr<AudioStreamPacket> AudioService::PopWakeWordPacket() {
 }
 
 void AudioService::EnableWakeWordDetection(bool enable) {
-    if (enable) {
-        // Lazy create wake_word_ if not yet created
-        if (!wake_word_) {
-            ESP_LOGI(TAG, "Lazy creating AfeWakeWord");
-            wake_word_ = std::make_unique<AfeWakeWord>();
-            wake_word_->OnWakeWordDetected([this](const std::string& wake_word) {
-                if (callbacks_.on_wake_word_detected) {
-                    callbacks_.on_wake_word_detected(wake_word);
-                }
-            });
-        }
+    if (!wake_word_) {
+        return;
+    }
 
+    ESP_LOGD(TAG, "%s wake word detection", enable ? "Enabling" : "Disabling");
+    if (enable) {
         if (!wake_word_initialized_) {
             if (!wake_word_->Initialize(codec_, models_list_)) {
                 ESP_LOGE(TAG, "Failed to initialize wake word");
@@ -584,9 +571,7 @@ void AudioService::EnableWakeWordDetection(bool enable) {
         wake_word_->Start();
         xEventGroupSetBits(event_group_, AS_EVENT_WAKE_WORD_RUNNING);
     } else {
-        if (wake_word_) {
-            wake_word_->Stop();
-        }
+        wake_word_->Stop();
         xEventGroupClearBits(event_group_, AS_EVENT_WAKE_WORD_RUNNING);
     }
 }
@@ -668,20 +653,6 @@ void AudioService::PlaySound(const std::string_view& ogg) {
     demuxer->Process(buf, size);
 }
 
-void AudioService::PlayOpusData(const std::vector<uint8_t>& opus_data, int sample_rate) {
-    if (!codec_->output_enabled()) {
-        esp_timer_stop(audio_power_timer_);
-        esp_timer_start_periodic(audio_power_timer_, AUDIO_POWER_CHECK_INTERVAL_MS * 1000);
-        codec_->EnableOutput(true);
-    }
-
-    auto packet = std::make_unique<AudioStreamPacket>();
-    packet->sample_rate = sample_rate;
-    packet->frame_duration = 60;
-    packet->payload = opus_data;
-    PushPacketToDecodeQueue(std::move(packet), true);
-}
-
 bool AudioService::IsIdle() {
     std::lock_guard<std::mutex> lock(audio_queue_mutex_);
     return audio_encode_queue_.empty() && audio_decode_queue_.empty() && audio_playback_queue_.empty() && audio_testing_queue_.empty();
@@ -689,16 +660,9 @@ bool AudioService::IsIdle() {
 
 void AudioService::WaitForPlaybackQueueEmpty() {
     std::unique_lock<std::mutex> lock(audio_queue_mutex_);
-    audio_queue_cv_.wait(lock, [this]() {
-        return service_stopped_ || (audio_decode_queue_.empty() && audio_playback_queue_.empty());
+    audio_queue_cv_.wait(lock, [this]() { 
+        return service_stopped_ || (audio_decode_queue_.empty() && audio_playback_queue_.empty()); 
     });
-}
-
-void AudioService::ClearPlaybackQueues() {
-    std::lock_guard<std::mutex> lock(audio_queue_mutex_);
-    audio_decode_queue_.clear();
-    audio_playback_queue_.clear();
-    audio_queue_cv_.notify_all();
 }
 
 void AudioService::ResetDecoder() {
