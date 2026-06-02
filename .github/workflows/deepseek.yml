@@ -156,10 +156,15 @@ jobs:
 
           WAKE_WORD_H="main/audio/wake_words/afe_wake_word.h"
           if [ -f "$WAKE_WORD_H" ]; then
-            # Комментируем оба проблемных include
             sed -i 's|#include <esp_afe_sr_models.h>|// #include <esp_afe_sr_models.h>|g' "$WAKE_WORD_H"
             sed -i 's|#include <esp_nsn_models.h>|// #include <esp_nsn_models.h>|g' "$WAKE_WORD_H"
             echo "✅ Fixed afe_wake_word.h"
+          fi
+
+          CUSTOM_WAKE_WORD_H="main/audio/wake_words/custom_wake_word.h"
+          if [ -f "$CUSTOM_WAKE_WORD_H" ]; then
+            sed -i 's|#include <esp_mn_iface.h>|// #include <esp_mn_iface.h>|g' "$CUSTOM_WAKE_WORD_H"
+            echo "✅ Fixed custom_wake_word.h"
           fi
 
           # GT911 fix
