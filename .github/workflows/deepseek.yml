@@ -145,26 +145,29 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          # Безопасное добавление main/include в INCLUDE_DIRS
-          if ! grep -q '"main/include"' main/CMakeLists.txt; then
-            sed -i 's|set(INCLUDE_DIRS \(.*\)")|set(INCLUDE_DIRS \1 "main/include")|g' main/CMakeLists.txt
-            echo "Added main/include to INCLUDE_DIRS"
-          else
-            echo "main/include already in INCLUDE_DIRS"
-          fi
+          # Восстанавливаем исходный CMakeLists.txt
+          git checkout main/CMakeLists.txt
           
-          echo "=== INCLUDE_DIRS after fix ==="
-          grep 'set(INCLUDE_DIRS' main/CMakeLists.txt
-          
-          # Создаём заглушку для esp_afe_sr_models.h
-          mkdir -p main/include/esp32p4
-          cat > main/include/esp_afe_sr_models.h << 'EOF'
+          # Создаём заглушку прямо в папке компонента esp-sr
+          ESP_SR_INCLUDE="managed_components/espressif__esp-sr/include"
+          if [ -d "$ESP_SR_INCLUDE" ]; then
+            cat > "$ESP_SR_INCLUDE/esp_afe_sr_models.h" << 'EOF'
           #ifndef ESP_AFE_SR_MODELS_H
           #define ESP_AFE_SR_MODELS_H
           typedef void srmodel_list_t;
           #endif
           EOF
-          cp main/include/esp_afe_sr_models.h main/include/esp32p4/
+            echo "Created stub in $ESP_SR_INCLUDE"
+          else
+            mkdir -p main/include
+            cat > main/include/esp_afe_sr_models.h << 'EOF'
+          #ifndef ESP_AFE_SR_MODELS_H
+          #define ESP_AFE_SR_MODELS_H
+          typedef void srmodel_list_t;
+          #endif
+          EOF
+            echo "Created stub in main/include"
+          fi
           
           printf '%s\n' '#ifndef MODEL_PATH_H' '#define MODEL_PATH_H' '#define MODEL_PATH "/fatfs/model"' '#endif' > main/model_path.h
           printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
@@ -191,13 +194,11 @@ jobs:
             fi
           done
           
-          if [ -f "main/CMakeLists.txt" ]; then
-            sed -i 's/-Wno-error=macro-redefined//g' main/CMakeLists.txt
-            if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
-              printf '\n' >> main/CMakeLists.txt
-              printf 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)\n' >> main/CMakeLists.txt
-              printf 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)\n' >> main/CMakeLists.txt
-            fi
+          # Добавляем флаги компиляции (безопасно, только если их нет)
+          if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
+            printf '\n' >> main/CMakeLists.txt
+            printf 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)\n' >> main/CMakeLists.txt
+            printf 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)\n' >> main/CMakeLists.txt
           fi
 
       - name: Build Firmware
