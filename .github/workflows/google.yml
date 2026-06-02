@@ -65,7 +65,7 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
-          # Генерируем sdkconfig с обязательным включением подсистемы ИИ и аудио
+          # Генерируем sdkconfig с поддержкой звукового ИИ, PSRAM и больших шрифтов LVGL
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
             'CONFIG_IDF_TARGET_ESP32P4=y' \
@@ -92,9 +92,10 @@ jobs:
             'CONFIG_SR_WN_WN9_S8=y' \
             'CONFIG_SR_MN_MN4_S8=y' \
             'CONFIG_SR_MODEL_ALLOC_FROM_SPIRAM=y' \
+            'CONFIG_LV_FONT_FMT_TXT_LARGE=y' \
             > sdkconfig.defaults
 
-          # Записываем правильную таблицу разделов с валидными запятыми и блоком model
+          # Записываем правильную таблицу разделов с валидными запятыми и блоком model под нейросети
           printf '%s\n' \
             'nvs,data,nvs,,0x6000,' \
             'phy_init,data,phy,,0x1000,' \
