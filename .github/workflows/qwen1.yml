@@ -210,15 +210,15 @@ jobs:
           # FIX 6: Main CMakeLists flags
           if [ -f "main/CMakeLists.txt" ]; then
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
-            echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
+            echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow -Wno-macro-redefined)' >> main/CMakeLists.txt
           fi
 
       - name: Build
         run: |
           set -x
           . ./esp-idf/export.sh
-          export CFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow"
-          export CXXFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow -fpermissive -frtti"
+          export CFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow -Wno-macro-redefined"
+          export CXXFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow -fpermissive -frtti -Wno-macro-redefined"
           idf.py build
 
       - name: Verify Build Artifacts
@@ -226,8 +226,7 @@ jobs:
         run: |
           set -x
           ARTIFACTS_OK=true
-          # Ищем файлы с правильным именем проекта (xiaozhi)
-          for artifact in build/bootloader/bootloader.bin build/partition_table/partition-table.bin build/xiaozhi.bin build/xiaozhi.elf; do
+          for artifact in build/bootloader/bootloader.bin build/partition_table/partition-table.bin build/xiaoclaw.bin build/xiaoclaw.elf; do
             if [ -f "$artifact" ]; then
               SIZE=$(stat -c%s "$artifact" 2>/dev/null || stat -f%z "$artifact" 2>/dev/null || echo "?")
               echo "✅ $artifact exists ($SIZE bytes)"
