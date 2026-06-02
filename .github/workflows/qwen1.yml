@@ -148,15 +148,12 @@ jobs:
           # FIX 2: Fix srmodel_list_t undefined type in assets.h
           ASSETS_H="main/assets.h"
           if [ -f "$ASSETS_H" ]; then
-            if ! grep -q "srmodel_list_t" "$ASSETS_H"; then
-              printf '\n%s\n' '#ifdef CONFIG_ESP_SR_ENABLE' '#include "esp_srmodel.h"' '#else' 'typedef void srmodel_list_t;' '#endif' >> "$ASSETS_H"
+            # Проверяем, есть ли уже определение srmodel_list_t
+            if ! grep -q "typedef.*srmodel_list_t" "$ASSETS_H" && ! grep -q "#include.*esp_srmodel.h" "$ASSETS_H"; then
+              # Добавляем условное определение перед использованием типа
+              # Находим строку с srmodel_list_t и добавляем guard перед ней
+              sed -i '/srmodel_list_t/i #ifdef CONFIG_ESP_SR_ENABLE\n#include "esp_srmodel.h"\n#else\ntypedef void srmodel_list_t;\n#endif' "$ASSETS_H"
               echo "✅ Patched assets.h with srmodel_list_t definition"
-            else
-              # Если srmodel_list_t уже используется, но нет include, добавляем его
-              if ! grep -q "esp_srmodel.h" "$ASSETS_H"; then
-                sed -i '1i #ifdef CONFIG_ESP_SR_ENABLE\n#include "esp_srmodel.h"\n#endif' "$ASSETS_H"
-                echo "✅ Added esp_srmodel.h include to assets.h"
-              fi
             fi
           fi
 
