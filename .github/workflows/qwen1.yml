@@ -56,18 +56,35 @@ jobs:
             echo "✅ Patched pmu_init"
           fi
 
-      - name: Disable xiaozhi-fonts for esp32p4
+      - name: Fix Dependencies and Config
         run: |
           set -x
+          
+          # 1. Add ESP-SR and GMF AI Audio dependencies
           YML_FILE="main/idf_component.yml"
           if [ -f "$YML_FILE" ]; then
+            # Remove xiaozhi-fonts for P4 to save space/time
             sed -i '/78\/xiaozhi-fonts:/,/rules:/d' "$YML_FILE"
             echo "" >> "$YML_FILE"
             echo "  78/xiaozhi-fonts:" >> "$YML_FILE"
             echo "    version: \"~1.6.0\"" >> "$YML_FILE"
             echo "    rules:" >> "$YML_FILE"
             echo "      - if: target not in [esp32p4]" >> "$YML_FILE"
-            echo "✅ Disabled xiaozhi-fonts for esp32p4"
+            
+            # Ensure esp-sr is present
+            if ! grep -q "espressif/esp-sr" "$YML_FILE"; then
+              echo "" >> "$YML_FILE"
+              echo "  espressif/esp-sr:" >> "$YML_FILE"
+              echo "    version: \">=2.0.0\"" >> "$YML_FILE"
+            fi
+            
+            # Ensure gmf_ai_audio is present
+            if ! grep -q "espressif/gmf_ai_audio" "$YML_FILE"; then
+              echo "" >> "$YML_FILE"
+              echo "  espressif/gmf_ai_audio:" >> "$YML_FILE"
+              echo "    version: \">=0.6.0\"" >> "$YML_FILE"
+            fi
+            echo "✅ Updated idf_component.yml"
           fi
           rm -f dependencies.lock
 
@@ -110,6 +127,9 @@ jobs:
             'CONFIG_COMPILER_CXX_EXCEPTIONS=y' \
             'CONFIG_COMPILER_WARNINGS_AS_ERRORS=n' \
             'CONFIG_IDF_ENV_FPGA=y' \
+            'CONFIG_USE_AUDIO_PROCESSOR=y' \
+            'CONFIG_ESP_SR_ENABLE=y' \
+            'CONFIG_ESP_SR_AFE_SUPPORTED=y' \
             > sdkconfig.defaults
 
           printf '%s\n' \
@@ -145,22 +165,18 @@ jobs:
             echo "✅ Created model_path.h stub"
           fi
 
-          # FIX 2: CRITICAL FIX for srmodel_list_t in assets.h
-          ASSETS_H="main/assets.h"
-          if [ -f "$ASSETS_H" ]; then
-            TEMP_FILE=$(mktemp)
-            echo '#ifndef SRMODEL_LIST_T_DEF' > "$TEMP_FILE"
-            echo '#define SRMODEL_LIST_T_DEF' >> "$TEMP_FILE"
-            echo '#ifdef CONFIG_ESP_SR_ENABLE' >> "$TEMP_FILE"
-            echo '#include "esp_srmodel.h"' >> "$TEMP_FILE"
-            echo '#else' >> "$TEMP_FILE"
-            echo 'typedef void srmodel_list_t;' >> "$TEMP_FILE"
-            echo '#endif' >> "$TEMP_FILE"
-            echo '#endif' >> "$TEMP_FILE"
-            echo '' >> "$TEMP_FILE"
-            cat "$ASSETS_H" >> "$TEMP_FILE"
-            mv "$TEMP_FILE" "$ASSETS_H"
-            echo "✅ Fixed srmodel_list_t definition in assets.h"
+          # FIX 2: Add explicit include paths for esp-sr in main CMakeLists
+          if [ -f "main/CMakeLists.txt" ]; then
+            # Check if already added to avoid duplicates on rerun
+            if ! grep -q "espressif__esp-sr/include" main/CMakeLists.txt; then
+              echo 'target_include_directories(${COMPONENT_LIB} PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/include)' >> main/CMakeLists.txt
+              echo 'target_include_directories(${COMPONENT_LIB} PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/include/esp32p4)' >> main/CMakeLists.txt
+              echo "✅ Added esp-sr include paths"
+            fi
+            
+            # Add compiler flags
+            echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
+            echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
           fi
 
           # FIX 3: LVGL Font fixes
@@ -206,12 +222,6 @@ jobs:
             grep -q "Wmaybe-uninitialized" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
             grep -q "Wdeprecated-declarations" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done
-
-          # FIX 6: Main CMakeLists flags
-          if [ -f "main/CMakeLists.txt" ]; then
-            echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
-            echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
-          fi
 
       - name: Build
         run: |
