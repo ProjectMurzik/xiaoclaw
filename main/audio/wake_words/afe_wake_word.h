@@ -5,6 +5,7 @@
 #include <freertos/task.h>
 #include <freertos/event_groups.h>
 
+#include <esp_afe_sr_iface.h>
 #include <esp_afe_sr_models.h>
 #include <model_path.h>
 
