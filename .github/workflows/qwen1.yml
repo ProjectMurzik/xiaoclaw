@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware qwen1
+name: ESP32-P4 Firmware Build qwen1
 
 on:
   push:
@@ -149,8 +149,14 @@ jobs:
           ASSETS_H="main/assets.h"
           if [ -f "$ASSETS_H" ]; then
             if ! grep -q "srmodel_list_t" "$ASSETS_H"; then
-              printf '\n%s\n' '#ifdef CONFIG_ESP_SR_ENABLE' '#else' 'typedef void srmodel_list_t;' '#endif' >> "$ASSETS_H"
-              echo "✅ Patched assets.h with srmodel_list_t stub"
+              printf '\n%s\n' '#ifdef CONFIG_ESP_SR_ENABLE' '#include "esp_srmodel.h"' '#else' 'typedef void srmodel_list_t;' '#endif' >> "$ASSETS_H"
+              echo "✅ Patched assets.h with srmodel_list_t definition"
+            else
+              # Если srmodel_list_t уже используется, но нет include, добавляем его
+              if ! grep -q "esp_srmodel.h" "$ASSETS_H"; then
+                sed -i '1i #ifdef CONFIG_ESP_SR_ENABLE\n#include "esp_srmodel.h"\n#endif' "$ASSETS_H"
+                echo "✅ Added esp_srmodel.h include to assets.h"
+              fi
             fi
           fi
 
