@@ -103,14 +103,6 @@ jobs:
 
       - name: Configure Project
         run: |
-          echo "=== DIAGNOSTIC: Checking AFE header before configuration ==="
-          if [ -f "main/audio/processors/afe_audio_processor.h" ]; then
-            echo "=== afe_audio_processor.h content (first 15 lines) ==="
-            head -15 main/audio/processors/afe_audio_processor.h
-          else
-            echo "ERROR: afe_audio_processor.h not found!"
-          fi
-          
           . ./esp-idf/export.sh
           set -e
 
@@ -148,24 +140,13 @@ jobs:
             'storage,data,fat,,0xA00000,' \
             > partitions.csv
 
-          echo "=== DIAGNOSTIC: sdkconfig.defaults created ==="
-          cat sdkconfig.defaults
-
           idf.py set-target esp32p4
           idf.py reconfigure
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          echo "=== DIAGNOSTIC: Before applying fixes ==="
-          echo "=== Current INCLUDE_DIRS in CMakeLists.txt ==="
-          grep 'set(INCLUDE_DIRS' main/CMakeLists.txt 2>/dev/null || echo "INCLUDE_DIRS not found"
-          
-          echo "=== Creating stub files ==="
           printf '%s\n' '#ifndef MODEL_PATH_H' '#define MODEL_PATH_H' '#define MODEL_PATH "/fatfs/model"' '#endif' > main/model_path.h
           printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
-          
-          echo "=== Stub files created ==="
-          ls -la main/model_path.h main/assets.h
           
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
@@ -188,19 +169,9 @@ jobs:
               printf '%s\n' '#include "cbin_font.h"' '#ifndef LV_FONT_T_DEFINED' 'typedef struct _lv_font_t lv_font_t;' '#define LV_FONT_T_DEFINED' '#endif' "lv_font_t* ${base}_init(void) { return NULL; }" > "$f"
             fi
           done
-          
-          echo "=== DIAGNOSTIC: After applying fixes ==="
-          echo "=== Checking if afe_audio_processor.cc will be compiled ==="
-          grep -A2 "Select audio processor" main/CMakeLists.txt || echo "Section not found"
 
       - name: Build Firmware
         run: |
-          echo "=== DIAGNOSTIC: Before build ==="
-          echo "=== CONFIG_USE_AUDIO_PROCESSOR value ==="
-          grep "CONFIG_USE_AUDIO_PROCESSOR" sdkconfig 2>/dev/null || echo "Not in sdkconfig"
-          echo "=== CONFIG_ESP_SR_ENABLE value ==="
-          grep "CONFIG_ESP_SR_ENABLE" sdkconfig 2>/dev/null || echo "Not in sdkconfig"
-          
           . ./esp-idf/export.sh
           export IDF_CI_BUILD=1
           export CI=1
