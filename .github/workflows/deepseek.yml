@@ -101,18 +101,6 @@ jobs:
             sed -i 's|strncpy(s_first_class_tool_names\[s_first_class_tool_count\], local_name, sizeof(s_first_class_tool_names\[s_first_class_tool_count\]) - 1);|snprintf(s_first_class_tool_names[s_first_class_tool_count], sizeof(s_first_class_tool_names[s_first_class_tool_count]), "%s", local_name);|g' "$MCP_CLIENT_FILE"
           fi
 
-      - name: Create esp_afe_sr_models.h in esp-sr component
-        run: |
-          # Создаём заглушку в папке компонента esp-sr
-          mkdir -p managed_components/espressif__esp-sr/include
-          cat > managed_components/espressif__esp-sr/include/esp_afe_sr_models.h << 'EOF'
-          #ifndef ESP_AFE_SR_MODELS_H
-          #define ESP_AFE_SR_MODELS_H
-          typedef void srmodel_list_t;
-          #endif
-          EOF
-          echo "Created stub in managed_components/espressif__esp-sr/include/"
-
       - name: Configure Project
         run: |
           . ./esp-idf/export.sh
@@ -154,6 +142,28 @@ jobs:
 
           idf.py set-target esp32p4
           idf.py reconfigure
+
+      - name: Create esp_afe_sr_models.h stub (after component install)
+        run: |
+          # Создаём заглушку в компоненте esp-sr
+          mkdir -p managed_components/espressif__esp-sr/include
+          cat > managed_components/espressif__esp-sr/include/esp_afe_sr_models.h << 'EOF'
+          #ifndef ESP_AFE_SR_MODELS_H
+          #define ESP_AFE_SR_MODELS_H
+          typedef void srmodel_list_t;
+          #endif
+          EOF
+          echo "Created stub in managed_components/espressif__esp-sr/include/"
+          
+          # Дублируем в main/include для страховки
+          mkdir -p main/include
+          cat > main/include/esp_afe_sr_models.h << 'EOF'
+          #ifndef ESP_AFE_SR_MODELS_H
+          #define ESP_AFE_SR_MODELS_H
+          typedef void srmodel_list_t;
+          #endif
+          EOF
+          echo "Created stub in main/include/"
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
