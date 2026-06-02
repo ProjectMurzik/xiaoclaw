@@ -230,7 +230,7 @@ jobs:
           . ./esp-idf/export.sh
           export CFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow"
           export CXXFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow -fpermissive -frtti"
-          idf.py build -v
+          idf.py build --verbose
 
       - name: Verify Build Artifacts
         if: success()
