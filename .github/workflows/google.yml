@@ -65,6 +65,14 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
+          # Гарантируем, что манифест содержит правильную версию esp-sr
+          mkdir -p main
+          printf '%s\n' \
+            'dependencies:' \
+            '  espressif/esp-sr:' \
+            '    version: "^2.4.0"' \
+            > main/idf_component.yml
+
           # Генерируем sdkconfig с поддержкой звукового ИИ, PSRAM и больших шрифтов LVGL
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
@@ -107,6 +115,7 @@ jobs:
           # Выполняем реконфигурацию проекта (выкачивание компонентов)
           idf.py set-target esp32p4
           idf.py reconfigure
+
 
       - name: Apply Component Fixes
         run: |
