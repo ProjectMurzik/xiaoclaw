@@ -89,6 +89,9 @@ jobs:
           rm -f dependencies.lock
           rm -rf build
 
+          # Create missing include directory to fix CMake error (main/main/include)
+          mkdir -p main/include
+
           printf '%s\n' \
             'CONFIG_IDF_TARGET="esp32p4"' \
             'CONFIG_IDF_TARGET_ESP32P4=y' \
@@ -207,25 +210,20 @@ jobs:
             grep -q "Wdeprecated-declarations" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done
 
-          # FIX 6: Main CMakeLists flags & Include Paths
+          # FIX 6: Main CMakeLists flags
           if [ -f "main/CMakeLists.txt" ]; then
-            # Добавляем флаги компиляции
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
-            
-            # Явно добавляем пути к заголовкам esp-sr, чтобы гарантировать их видимость
-            echo 'target_include_directories(__idf_main PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/include)' >> main/CMakeLists.txt
-            echo 'target_include_directories(__idf_main PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/include/esp32p4)' >> main/CMakeLists.txt
-            echo 'target_include_directories(__idf_main PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/src/include)' >> main/CMakeLists.txt
           fi
 
       - name: Build
         run: |
           set -x
           . ./esp-idf/export.sh
-          export CFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow"
+          export CFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow"
           export CXXFLAGS="-Wno-error -Wno-error=maybe-uninitialized -Wno-error=deprecated-declarations -Wno-int-conversion -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow -fpermissive -frtti"
-          idf.py build
+          # Using -v flag to see detailed output from Ninja for debugging
+          idf.py build -v
 
       - name: Verify Build Artifacts
         if: success()
