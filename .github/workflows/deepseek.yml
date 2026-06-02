@@ -143,45 +143,33 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          echo '#ifndef MODEL_PATH_H' > main/model_path.h
-          echo '#define MODEL_PATH_H' >> main/model_path.h
-          echo '#define MODEL_PATH "/fatfs/model"' >> main/model_path.h
-          echo '#endif' >> main/model_path.h
-          echo "Created model_path.h stub"
+          printf '%s\n' '#ifndef MODEL_PATH_H' '#define MODEL_PATH_H' '#define MODEL_PATH "/fatfs/model"' '#endif' > main/model_path.h
 
-          ASSETS_H="main/assets.h"
-          if [ -f "$ASSETS_H" ]; then
-            if ! grep -q "srmodel_list_t" "$ASSETS_H"; then
-              echo '#ifndef CONFIG_ESP_SR_ENABLE' > main/assets.h.new
-              echo '#else' >> main/assets.h.new
-              echo 'typedef void srmodel_list_t;' >> main/assets.h.new
-              echo '#endif' >> main/assets.h.new
-              cat "$ASSETS_H" >> main/assets.h.new
-              mv main/assets.h.new "$ASSETS_H"
-              echo "Added srmodel_list_t to beginning of assets.h"
+          if [ ! -f "main/assets.h" ]; then
+            printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
+          else
+            if ! grep -q "srmodel_list_t" main/assets.h; then
+              cp main/assets.h main/assets.h.bak
+              printf '%s\n' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' > main/assets.h
+              printf '\n' >> main/assets.h
+              cat main/assets.h.bak >> main/assets.h
             fi
           fi
 
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
-            if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
+            if grep -q "\\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
               rm -f "$GT911_H"
               curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || true
             fi
           fi
 
-          find ./managed_components -name "CMakeLists.txt" -type f | while read -r cmake_file; do
-            sed -i 's/-Werror //g' "$cmake_file"
-            sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
-            sed -i 's/-Werror$//g' "$cmake_file"
-          done 2>/dev/null || true
+          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \;
+          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror=deprecated-declarations//g' {} \;
+          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror$//g' {} \;
 
-          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
-            grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || \
-              sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
-            grep -q "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file" || \
-              sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
-          done 2>/dev/null || true
+          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
+          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
 
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
@@ -198,9 +186,9 @@ jobs:
           if [ -f "main/CMakeLists.txt" ]; then
             sed -i 's/-Wno-error=macro-redefined//g' main/CMakeLists.txt
             if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
-              echo '' >> main/CMakeLists.txt
-              echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
-              echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
+              printf '\n' >> main/CMakeLists.txt
+              printf 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)\n' >> main/CMakeLists.txt
+              printf 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)\n' >> main/CMakeLists.txt
             fi
           fi
 
