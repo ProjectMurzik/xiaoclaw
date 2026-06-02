@@ -1,6 +1,7 @@
 #ifndef AFE_WAKE_WORD_H
 #define AFE_WAKE_WORD_H
 
+#include <esp_srmodel.h> // <-- ДОБАВИТЬ ЭТУ СТРОКУ СВЕРХУ В ОБОИХ ФАЙЛАХ
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/event_groups.h>
