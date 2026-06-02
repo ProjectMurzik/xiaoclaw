@@ -75,7 +75,7 @@ list(APPEND SOURCES
     "bridge/bridge.cc"
 )
 
-set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "mimi" "bridge" "main/include")
+set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "mimi" "bridge")
 
 # Add board common files
 list(APPEND SOURCES
