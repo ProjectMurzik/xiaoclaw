@@ -192,11 +192,15 @@ jobs:
           BUILD_EXIT=${PIPESTATUS[0]}
           
           if [ $BUILD_EXIT -ne 0 ]; then
-            echo "=== BUILD FAILED ==="
-            echo "Last 200 lines:"
+            echo "========================================="
+            echo "Build failed with exit code: $BUILD_EXIT"
+            echo "========================================="
+            echo "=== FULL ERROR OUTPUT ==="
+            grep -E "(error:|fatal error:|undefined reference|multiple definition)" build.log | head -100
+            echo "========================================="
+            echo "=== LAST 200 LINES ==="
             tail -n 200 build.log
-            echo "=== ERRORS ==="
-            grep -E "(error:|fatal error:)" build.log | head -30
+            echo "========================================="
             exit $BUILD_EXIT
           fi
 
