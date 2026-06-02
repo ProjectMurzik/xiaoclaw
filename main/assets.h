@@ -1,6 +1,7 @@
 #ifndef ASSETS_H
 #define ASSETS_H
 
+#include <esp_srmodel.h>
 #include <string>
 #include <functional>
 #include <memory>
