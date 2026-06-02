@@ -174,11 +174,28 @@ jobs:
       # ------------------------------------------------------------
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
-          # Заглушки для отсутствующих заголовков
+          # Правильное добавление main/include в INCLUDE_DIRS
+          sed -i 's|set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "mimi" "bridge")|set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "mimi" "bridge" "main/include")|g' main/CMakeLists.txt
+          
+          # Проверка
+          echo "=== INCLUDE_DIRS after fix ==="
+          grep 'set(INCLUDE_DIRS' main/CMakeLists.txt
+          
+          # Создаём заглушку для esp_afe_sr_models.h
+          mkdir -p main/include
+          mkdir -p main/include/esp32p4
+          cat > main/include/esp_afe_sr_models.h << 'EOF'
+          #ifndef ESP_AFE_SR_MODELS_H
+          #define ESP_AFE_SR_MODELS_H
+          typedef void srmodel_list_t;
+          #endif
+          EOF
+          cp main/include/esp_afe_sr_models.h main/include/esp32p4/
+          
+          # Остальные фиксы
           printf '%s\n' '#ifndef MODEL_PATH_H' '#define MODEL_PATH_H' '#define MODEL_PATH "/fatfs/model"' '#endif' > main/model_path.h
           printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
-
-          # GT911
+          
           GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
           if [ -f "$GT911_H" ]; then
             if grep -q "\\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
@@ -186,25 +203,21 @@ jobs:
               curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || true
             fi
           fi
-
-          # Отключаем -Werror в managed_components
+          
           find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \;
           find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror=deprecated-declarations//g' {} \;
           find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror$//g' {} \;
-
-          # Фикс для esp_lvgl_port
+          
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
           find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
-
-          # Фикс эмодзи-шрифтов
+          
           for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
             if [ -f "$f" ]; then
               base=$(basename "$f" .c)
               printf '%s\n' '#include "cbin_font.h"' '#ifndef LV_FONT_T_DEFINED' 'typedef struct _lv_font_t lv_font_t;' '#define LV_FONT_T_DEFINED' '#endif' "lv_font_t* ${base}_init(void) { return NULL; }" > "$f"
             fi
           done
-
-          # Дополнительные флаги в main/CMakeLists.txt
+          
           if [ -f "main/CMakeLists.txt" ]; then
             sed -i 's/-Wno-error=macro-redefined//g' main/CMakeLists.txt
             if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
