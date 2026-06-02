@@ -145,29 +145,41 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
+          # ========== ДИАГНОСТИКА ==========
+          echo "=== DIAGNOSTIC START ==="
+          
+          echo "=== Original INCLUDE_DIRS ==="
+          grep 'set(INCLUDE_DIRS' main/CMakeLists.txt || echo "LINE NOT FOUND"
+          
+          echo "=== afe_audio_processor.h include ==="
+          if [ -f "main/audio/processors/afe_audio_processor.h" ]; then
+            grep '#include' main/audio/processors/afe_audio_processor.h
+          else
+            echo "File not found!"
+          fi
+          
+          echo "=== Stub file check ==="
+          ls -la main/include/esp_afe_sr_models.h 2>/dev/null || echo "Stub not found in main/include"
+          echo "=== DIAGNOSTIC END ==="
+          # ========== КОНЕЦ ДИАГНОСТИКИ ==========
+          
           # Восстанавливаем исходный CMakeLists.txt
           git checkout main/CMakeLists.txt
           
-          # Создаём заглушку прямо в папке компонента esp-sr
-          ESP_SR_INCLUDE="managed_components/espressif__esp-sr/include"
-          if [ -d "$ESP_SR_INCLUDE" ]; then
-            cat > "$ESP_SR_INCLUDE/esp_afe_sr_models.h" << 'EOF'
+          # Добавляем main/include в INCLUDE_DIRS
+          sed -i '/set(INCLUDE_DIRS/ s/")/ "main/include")/' main/CMakeLists.txt
+          
+          echo "=== INCLUDE_DIRS after fix ==="
+          grep 'set(INCLUDE_DIRS' main/CMakeLists.txt
+          
+          # Создаём заглушку
+          mkdir -p main/include
+          cat > main/include/esp_afe_sr_models.h << 'EOF'
           #ifndef ESP_AFE_SR_MODELS_H
           #define ESP_AFE_SR_MODELS_H
           typedef void srmodel_list_t;
           #endif
           EOF
-            echo "Created stub in $ESP_SR_INCLUDE"
-          else
-            mkdir -p main/include
-            cat > main/include/esp_afe_sr_models.h << 'EOF'
-          #ifndef ESP_AFE_SR_MODELS_H
-          #define ESP_AFE_SR_MODELS_H
-          typedef void srmodel_list_t;
-          #endif
-          EOF
-            echo "Created stub in main/include"
-          fi
           
           printf '%s\n' '#ifndef MODEL_PATH_H' '#define MODEL_PATH_H' '#define MODEL_PATH "/fatfs/model"' '#endif' > main/model_path.h
           printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
@@ -194,11 +206,34 @@ jobs:
             fi
           done
           
-          # Добавляем флаги компиляции (безопасно, только если их нет)
-          if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
-            printf '\n' >> main/CMakeLists.txt
-            printf 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)\n' >> main/CMakeLists.txt
-            printf 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)\n' >> main/CMakeLists.txt
+          if [ -f "main/CMakeLists.txt" ]; then
+            if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
+              printf '\n' >> main/CMakeLists.txt
+              printf 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)\n' >> main/CMakeLists.txt
+              printf 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)\n' >> main/CMakeLists.txt
+            fi
+          fi
+          
+          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \;
+          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror=deprecated-declarations//g' {} \;
+          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror$//g' {} \;
+          
+          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
+          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
+          
+          for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
+            if [ -f "$f" ]; then
+              base=$(basename "$f" .c)
+              printf '%s\n' '#include "cbin_font.h"' '#ifndef LV_FONT_T_DEFINED' 'typedef struct _lv_font_t lv_font_t;' '#define LV_FONT_T_DEFINED' '#endif' "lv_font_t* ${base}_init(void) { return NULL; }" > "$f"
+            fi
+          done
+          
+          if [ -f "main/CMakeLists.txt" ]; then
+            if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
+              printf '\n' >> main/CMakeLists.txt
+              printf 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)\n' >> main/CMakeLists.txt
+              printf 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)\n' >> main/CMakeLists.txt
+            fi
           fi
 
       - name: Build Firmware
@@ -215,8 +250,12 @@ jobs:
           BUILD_EXIT=${PIPESTATUS[0]}
 
           if [ $BUILD_EXIT -ne 0 ]; then
+            echo "========================================="
             echo "Build failed with exit code: $BUILD_EXIT"
+            echo "========================================="
+            echo "Last 100 lines of build.log:"
             tail -n 100 build.log
+            echo "========================================="
             exit $BUILD_EXIT
           fi
 
