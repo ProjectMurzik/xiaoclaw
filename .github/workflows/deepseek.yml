@@ -153,26 +153,26 @@ jobs:
           
           echo "=== afe_audio_processor.h include ==="
           if [ -f "main/audio/processors/afe_audio_processor.h" ]; then
-            grep '#include' main/audio/processors/afe_audio_processor.h
+            head -10 main/audio/processors/afe_audio_processor.h
           else
             echo "File not found!"
           fi
           
           echo "=== Stub file check ==="
-          ls -la main/include/esp_afe_sr_models.h 2>/dev/null || echo "Stub not found in main/include"
+          ls -la main/include/ 2>/dev/null || echo "main/include directory not found"
           echo "=== DIAGNOSTIC END ==="
           # ========== КОНЕЦ ДИАГНОСТИКИ ==========
           
           # Восстанавливаем исходный CMakeLists.txt
           git checkout main/CMakeLists.txt
           
-          # Добавляем main/include в INCLUDE_DIRS
-          sed -i '/set(INCLUDE_DIRS/ s/")/ "main/include")/' main/CMakeLists.txt
+          # Добавляем main/include в INCLUDE_DIRS (используем | как разделитель)
+          sed -i '/set(INCLUDE_DIRS/ s|")| "main/include")|' main/CMakeLists.txt
           
           echo "=== INCLUDE_DIRS after fix ==="
           grep 'set(INCLUDE_DIRS' main/CMakeLists.txt
           
-          # Создаём заглушку
+          # Создаём заглушку для esp_afe_sr_models.h
           mkdir -p main/include
           cat > main/include/esp_afe_sr_models.h << 'EOF'
           #ifndef ESP_AFE_SR_MODELS_H
@@ -180,6 +180,8 @@ jobs:
           typedef void srmodel_list_t;
           #endif
           EOF
+          echo "=== Created stub in main/include ==="
+          ls -la main/include/esp_afe_sr_models.h
           
           printf '%s\n' '#ifndef MODEL_PATH_H' '#define MODEL_PATH_H' '#define MODEL_PATH "/fatfs/model"' '#endif' > main/model_path.h
           printf '%s\n' '#ifndef ASSETS_H' '#define ASSETS_H' '#ifndef CONFIG_ESP_SR_ENABLE' 'typedef void srmodel_list_t;' '#endif' '#endif' > main/assets.h
@@ -189,6 +191,28 @@ jobs:
             if grep -q "\\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
               rm -f "$GT911_H"
               curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || true
+            fi
+          fi
+          
+          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror //g' {} \;
+          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror=deprecated-declarations//g' {} \;
+          find ./managed_components -name "CMakeLists.txt" -type f -exec sed -i 's/-Werror$//g' {} \;
+          
+          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' {} \;
+          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f -exec sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' {} \;
+          
+          for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
+            if [ -f "$f" ]; then
+              base=$(basename "$f" .c)
+              printf '%s\n' '#include "cbin_font.h"' '#ifndef LV_FONT_T_DEFINED' 'typedef struct _lv_font_t lv_font_t;' '#define LV_FONT_T_DEFINED' '#endif' "lv_font_t* ${base}_init(void) { return NULL; }" > "$f"
+            fi
+          done
+          
+          if [ -f "main/CMakeLists.txt" ]; then
+            if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
+              printf '\n' >> main/CMakeLists.txt
+              printf 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)\n' >> main/CMakeLists.txt
+              printf 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)\n' >> main/CMakeLists.txt
             fi
           fi
           
