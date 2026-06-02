@@ -143,61 +143,16 @@ jobs:
 
       - name: Apply Component Fixes (GT911, -Werror, emoji fonts)
         run: |
+          # model_path.h stub
           echo '#ifndef MODEL_PATH_H' > main/model_path.h
           echo '#define MODEL_PATH_H' >> main/model_path.h
           echo '#define MODEL_PATH "/fatfs/model"' >> main/model_path.h
           echo '#endif' >> main/model_path.h
           echo "Created model_path.h stub"
 
-          ASSETS_H="main/assets.h"
-          if [ -f "$ASSETS_H" ]; then
-            if ! grep -q "srmodel_list_t" "$ASSETS_H"; then
-              printf '#ifdef CONFIG_ESP_SR_ENABLE\n#else\ntypedef void srmodel_list_t;\n#endif\n' >> "$ASSETS_H"
-              echo "Patched assets.h with srmodel_list_t stub"
-            fi
-          fi
+          Implicit map keys need to be followed by map values at line 159, column 1: #ifndef CONFIG_ESP_SR_ENABLE typedef void srmodel_list_t; ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-          GT911_H="managed_components/espressif__esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h"
-          if [ -f "$GT911_H" ]; then
-            if grep -q "\.dev_addr" "$GT911_H" && ! grep -q "#define ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG" "$GT911_H"; then
-              rm -f "$GT911_H"
-              curl -sS -o "$GT911_H" "https://raw.githubusercontent.com/espressif/esp-lcd-touch/master/components/esp_lcd_touch_gt911/include/esp_lcd_touch_gt911.h" || true
-            fi
-          fi
 
-          find ./managed_components -name "CMakeLists.txt" -type f | while read -r cmake_file; do
-            sed -i 's/-Werror //g' "$cmake_file"
-            sed -i 's/-Werror=deprecated-declarations//g' "$cmake_file"
-            sed -i 's/-Werror$//g' "$cmake_file"
-          done 2>/dev/null || true
-
-          find ./managed_components/espressif__esp_lvgl_port -name "*.c" -type f | while read -r file; do
-            grep -q "#pragma GCC diagnostic ignored \"-Wmaybe-uninitialized\"" "$file" || \
-              sed -i '1i #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"' "$file"
-            grep -q "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"" "$file" || \
-              sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
-          done 2>/dev/null || true
-
-          for f in managed_components/78__xiaozhi-fonts/src/font_emoji_*.c; do
-            if [ -f "$f" ]; then
-              base=$(basename "$f" .c)
-              echo '#include "cbin_font.h"' > "$f"
-              echo '#ifndef LV_FONT_T_DEFINED' >> "$f"
-              echo 'typedef struct _lv_font_t lv_font_t;' >> "$f"
-              echo '#define LV_FONT_T_DEFINED' >> "$f"
-              echo '#endif' >> "$f"
-              echo "lv_font_t* ${base}_init(void) { return NULL; }" >> "$f"
-            fi
-          done
-
-          if [ -f "main/CMakeLists.txt" ]; then
-            sed -i 's/-Wno-error=macro-redefined//g' main/CMakeLists.txt
-            if ! grep -q "target_compile_options(__idf_main PRIVATE" main/CMakeLists.txt; then
-              echo '' >> main/CMakeLists.txt
-              echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
-              echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
-            fi
-          fi
 
       - name: Build Firmware
         run: |
