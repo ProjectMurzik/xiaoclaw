@@ -2,8 +2,8 @@
 #define CUSTOM_WAKE_WORD_H
 
 #include <esp_attr.h>
-#include <esp_mn_iface.h>
-#include <esp_mn_models.h>
+#include <esp_afe_sr_models.h>  // Добавлено для srmodel_list_t
+#include <esp_afe_sr_iface.h>   // Добавлено для интерфейсов AFE v2
 #include <model_path.h>
 
 #include <deque>
