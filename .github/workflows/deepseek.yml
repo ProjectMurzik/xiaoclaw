@@ -24,22 +24,26 @@ jobs:
           echo "IDF_CI_BUILD=1" >> $GITHUB_ENV
           echo "CI=1" >> $GITHUB_ENV
 
-      - name: Cache ESP-IDF
+      - name: Cache ESP-IDF and Components
         uses: actions/cache@v4
         with:
-          path: ~/.espressif
-          key: ${{ runner.os }}-esp-idf-v5.5.13-${{ hashFiles('main/idf_component.yml') }}
+          path: |
+            ~/.espressif
+            managed_components
+            esp-idf
+          key: ${{ runner.os }}-esp-idf-v5.5.13-${{ hashFiles('main/idf_component.yml', 'esp-idf/.git/config') }}
           restore-keys: |
             ${{ runner.os }}-esp-idf-v5.5.13-
 
       - name: Setup ESP-IDF v5.5
         run: |
           set -x
+          git config --global http.postBuffer 524288000
           if [ ! -d "esp-idf" ] || [ ! -f "esp-idf/export.sh" ]; then
             rm -rf esp-idf
-            git clone --depth 1 --branch release/v5.5 https://github.com/espressif/esp-idf.git
+            git clone --depth 1 --branch release/v5.5 --shallow-submodules https://github.com/espressif/esp-idf.git
             cd esp-idf
-            git submodule update --init --recursive
+            git submodule update --init --recursive --depth 1 --recommend-shallow --jobs 4
             cd ..
           fi
           cd esp-idf
@@ -80,7 +84,7 @@ jobs:
           set -x
           # Комментируем afe_audio_processor.cc
           sed -i 's|audio/processors/afe_audio_processor.cc|#audio/processors/afe_audio_processor.cc|g' main/CMakeLists.txt
-          # Удаляем include
+          # Удаляем include из audio_service.cc
           sed -i '/#include "processors\/afe_audio_processor.h"/d' main/audio/audio_service.cc
           echo "✅ AFE temporarily removed from build"
 
@@ -132,7 +136,6 @@ jobs:
       - name: Apply Component Fixes
         run: |
           set -x
-          
           # model_path.h stub
           if [ ! -f main/model_path.h ]; then
             echo '#ifndef MODEL_PATH_H' > main/model_path.h
@@ -141,7 +144,7 @@ jobs:
             echo '#endif' >> main/model_path.h
           fi
 
-          # FIX: assets.h - remove srmodel_list_t line
+          # assets.h fix
           ASSETS_H="main/assets.h"
           if [ -f "$ASSETS_H" ]; then
             sed -i '/srmodel_list_t/d' "$ASSETS_H"
@@ -153,7 +156,7 @@ jobs:
             mv main/assets.h.new "$ASSETS_H"
           fi
 
-          # FIX: afe_wake_word.h - comment out problematic include
+          # afe_wake_word.h fix
           WAKE_WORD_H="main/audio/wake_words/afe_wake_word.h"
           if [ -f "$WAKE_WORD_H" ]; then
             sed -i 's|#include <esp_afe_sr_models.h>|// #include <esp_afe_sr_models.h>|g' "$WAKE_WORD_H"
@@ -195,8 +198,11 @@ jobs:
             echo "========================================="
             echo "Build failed with exit code: $BUILD_EXIT"
             echo "========================================="
-            echo "=== FULL ERROR OUTPUT ==="
-            grep -E "(error:|fatal error:|undefined reference|multiple definition)" build.log | head -100
+            echo "=== IDF_PY_STDERR_OUTPUT ==="
+            cat build/log/idf_py_stderr_output_*.txt 2>/dev/null | head -200
+            echo "========================================="
+            echo "=== ERRORS from build.log ==="
+            grep -E "(error:|fatal error:|undefined reference)" build.log | head -100
             echo "========================================="
             echo "=== LAST 200 LINES ==="
             tail -n 200 build.log
