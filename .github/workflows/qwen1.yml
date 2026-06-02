@@ -1,4 +1,4 @@
-name: ESP32-P4 Firmware Build qwen1
+name: ESP32-P4 Firmware Build
 
 on:
   push:
@@ -24,6 +24,7 @@ jobs:
           echo "IDF_CI_BUILD=1" >> $GITHUB_ENV
           echo "CI=1" >> $GITHUB_ENV
           echo "PYTHONDONTWRITEBYTECODE=1" >> $GITHUB_ENV
+          echo "PYTHONFAULTHANDLER=1" >> $GITHUB_ENV
 
       - name: Cache ESP-IDF
         uses: actions/cache@v4
@@ -109,8 +110,6 @@ jobs:
             'CONFIG_COMPILER_CXX_EXCEPTIONS=y' \
             'CONFIG_COMPILER_WARNINGS_AS_ERRORS=n' \
             'CONFIG_IDF_ENV_FPGA=y' \
-            'CONFIG_USE_AUDIO_PROCESSOR=y' \
-            'CONFIG_ESP_SR_ENABLE=y' \
             > sdkconfig.defaults
 
           printf '%s\n' \
@@ -208,15 +207,10 @@ jobs:
             grep -q "Wdeprecated-declarations" "$file" || sed -i '1i #pragma GCC diagnostic ignored "-Wdeprecated-declarations"' "$file"
           done
 
-          # FIX 6: Main CMakeLists flags & ESP-SR Include Path
+          # FIX 6: Main CMakeLists flags (REMOVED invalid -Wno-error=macro-redefined)
           if [ -f "main/CMakeLists.txt" ]; then
-            # Добавляем флаги компиляции
             echo 'target_compile_options(__idf_main PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-frtti -fexceptions -fpermissive>)' >> main/CMakeLists.txt
             echo 'target_compile_options(__idf_main PRIVATE -Wno-error=int-conversion -Wno-error=pointer-sign -Wno-error=conversion -Wno-error=stringop-truncation -Wno-error=stringop-overflow -Wno-error=designated-init -Wno-error=overflow)' >> main/CMakeLists.txt
-            
-            # Явно добавляем пути include для esp-sr, если они не видны
-            echo 'target_include_directories(__idf_main PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/include)' >> main/CMakeLists.txt
-            echo 'target_include_directories(__idf_main PRIVATE $ENV{IDF_PATH}/managed_components/espressif__esp-sr/include/esp32p4)' >> main/CMakeLists.txt
           fi
 
       - name: Build
