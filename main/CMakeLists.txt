@@ -959,6 +959,7 @@ idf_component_register(SRCS ${SOURCES}
                         esp_netif 
                         esp_audio_codec   # <-- ДОБАВЛЯЕМ СЮДА ДЛЯ ВИДИМОСТИ esp_audio_enc.h
                         opus              # <-- ДОБАВЛЯЕМ СЮДА ДЛЯ КОДИРОВАНИЯ ГОЛОСА
+                        audio_pipeline
                     PRIV_REQUIRES
                         esp_pm
                         esp_psram                      
