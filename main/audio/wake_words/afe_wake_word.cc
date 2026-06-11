@@ -2,7 +2,9 @@
 #include "audio_service.h"
 #include <esp_log.h>
 #include <sstream>
-
+extern "C" {
+#include "display/kawaii_face_service.h"
+}
 #define DETECTION_RUNNING_EVENT 1
 
 #define TAG "AfeWakeWord"
@@ -151,18 +153,22 @@ void AfeWakeWord::AudioDetectionTask() {
         // Приведение типов void* к int16_t* для PCM буфера звука
         StoreWakeWordData((int16_t*)res->data, res->data_size / sizeof(int16_t));
 
-        if (res->wakeup_state == WAKENET_DETECTED) {
-            Stop();
-            if (!wake_words_.empty() && (res->wakenet_model_index - 1) < (int)wake_words_.size()) {
-                last_detected_wake_word_ = wake_words_[res->wakenet_model_index - 1];
-            } else {
-                last_detected_wake_word_ = "unknown";
+            if (res->wakeup_state == WAKENET_DETECTED) {
+                Stop();
+                
+                // === KAWAII FACE: Wake Word Detected ===
+                kawaii_face_set_emotion("wake_word");
+                // =======================================
+                
+                if (!wake_words_.empty() && (res->wakenet_model_index - 1) < (int)wake_words_.size()) {
+                    last_detected_wake_word_ = wake_words_[res->wakenet_model_index - 1];
+                } else {
+                    last_detected_wake_word_ = "unknown";
+                }
+                if (wake_word_detected_callback_) {
+                    wake_word_detected_callback_(last_detected_wake_word_);
+                }
             }
-
-            if (wake_word_detected_callback_) {
-                wake_word_detected_callback_(last_detected_wake_word_);
-            }
-        }
     }
 }
 
