@@ -297,7 +297,7 @@ void AudioService::AudioInputTask() {
 }
 
 void AudioService::AudioOutputTask() {
-        while (true) {
+    while (true) {
         std::unique_lock<std::mutex> lock(audio_queue_mutex_);
         audio_queue_cv_.wait(lock, [this]() { return !audio_playback_queue_.empty() || service_stopped_; });
         
@@ -309,34 +309,29 @@ void AudioService::AudioOutputTask() {
         
         if (service_stopped_) {
             break;
-        }
-        std::unique_lock<std::mutex> lock(audio_queue_mutex_);
-        audio_queue_cv_.wait(lock, [this]() { return !audio_playback_queue_.empty() || service_stopped_; });
-        if (service_stopped_) {
-            break;
-        }
-
+        }  // ← ЭТА СКОБКА БЫЛА ПРОПУЩЕНА!
+        
         auto task = std::move(audio_playback_queue_.front());
         audio_playback_queue_.pop_front();
         audio_queue_cv_.notify_all();
         lock.unlock();
-
+        
         if (!codec_->output_enabled()) {
             esp_timer_stop(audio_power_timer_);
             esp_timer_start_periodic(audio_power_timer_, AUDIO_POWER_CHECK_INTERVAL_MS * 1000);
             codec_->EnableOutput(true);
         }
-
+        
         codec_->OutputData(task->pcm);
         
         // === KAWAII FACE: Speaking ===
         kawaii_face_set_emotion("speaking");
         // =============================
-
+        
         /* Update the last output time */
         last_output_time_ = std::chrono::steady_clock::now();
         debug_statistics_.playback_count++;
-
+        
 #if CONFIG_USE_SERVER_AEC
         /* Record the timestamp for server AEC */
         if (task->timestamp > 0) {
@@ -345,7 +340,6 @@ void AudioService::AudioOutputTask() {
         }
 #endif
     }
-
     ESP_LOGW(TAG, "Audio output task stopped");
 }
 
