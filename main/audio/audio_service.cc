@@ -1,7 +1,9 @@
 #include "audio_service.h"
 #include <esp_log.h>
 #include <cstring>
-
+extern "C" {
+#include "display/kawaii_face_service.h"
+}
 #define RATE_CVT_CFG(_src_rate, _dest_rate, _channel)        \
     (esp_ae_rate_cvt_cfg_t)                                  \
     {                                                        \
@@ -104,6 +106,13 @@ void AudioService::Initialize(AudioCodec* codec) {
 
     audio_processor_->OnVadStateChange([this](bool speaking) {
         voice_detected_ = speaking;
+        
+        // === KAWAII FACE: VAD Listening ===
+        if (speaking) {
+            kawaii_face_set_emotion("listening");
+        }
+        // ==================================
+        
         if (callbacks_.on_vad_change) {
             callbacks_.on_vad_change(speaking);
         }
@@ -288,7 +297,19 @@ void AudioService::AudioInputTask() {
 }
 
 void AudioService::AudioOutputTask() {
-    while (true) {
+        while (true) {
+        std::unique_lock<std::mutex> lock(audio_queue_mutex_);
+        audio_queue_cv_.wait(lock, [this]() { return !audio_playback_queue_.empty() || service_stopped_; });
+        
+        // === KAWAII FACE: Playback queue empty → Idle ===
+        if (audio_playback_queue_.empty() && !service_stopped_) {
+            kawaii_face_set_emotion("idle");
+        }
+        // ================================================
+        
+        if (service_stopped_) {
+            break;
+        }
         std::unique_lock<std::mutex> lock(audio_queue_mutex_);
         audio_queue_cv_.wait(lock, [this]() { return !audio_playback_queue_.empty() || service_stopped_; });
         if (service_stopped_) {
@@ -307,6 +328,10 @@ void AudioService::AudioOutputTask() {
         }
 
         codec_->OutputData(task->pcm);
+        
+        // === KAWAII FACE: Speaking ===
+        kawaii_face_set_emotion("speaking");
+        // =============================
 
         /* Update the last output time */
         last_output_time_ = std::chrono::steady_clock::now();
